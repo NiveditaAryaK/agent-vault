@@ -1,0 +1,23 @@
+import { auth0 } from '@/lib/auth0';
+import { NextRequest, NextResponse } from 'next/server';
+
+export async function middleware(req: NextRequest) {
+  // Let Auth0 handle its own routes
+  const res = await auth0.middleware(req);
+  if (res) return res;
+
+  // Protect /dashboard and /chat — redirect to login if not authenticated
+  const { pathname } = req.nextUrl;
+  if (pathname.startsWith('/dashboard') || pathname.startsWith('/chat')) {
+    const session = await auth0.getSession();
+    if (!session) {
+      return NextResponse.redirect(new URL('/api/auth/login', req.url));
+    }
+  }
+
+  return NextResponse.next();
+}
+
+export const config = {
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+};
