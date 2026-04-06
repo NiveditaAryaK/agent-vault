@@ -89,6 +89,9 @@ export default function DashboardPage() {
     void (async () => {
       await Promise.all([fetchPermissions(), fetchAuditLog()]);
     })();
+    // Initial dashboard bootstrap only.
+    // fetchPermissions intentionally reads the current URL to detect a fresh connection.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function handleIndex() {
@@ -234,7 +237,7 @@ export default function DashboardPage() {
                           </button>
                         ) : (
                           <a
-                            href={`/api/auth/connect?connection=${conn.connection}&returnTo=/dashboard`}
+                            href={`/api/auth/login?connection=${conn.connection}&returnTo=/dashboard`}
                             className="text-xs text-violet-400 hover:text-violet-300 bg-violet-500/10 hover:bg-violet-500/15 border border-violet-500/20 px-3 py-1.5 rounded-lg transition-colors"
                           >
                             Connect
