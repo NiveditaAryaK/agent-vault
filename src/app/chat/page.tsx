@@ -23,7 +23,7 @@ interface Message {
 const ACTION_ICONS: Record<string, string> = {
   send_email: '📧',
   post_github_comment: '💬',
-  update_notion: '📝',
+  send_outlook_email: '📨',
 };
 
 export default function ChatPage() {
@@ -31,7 +31,7 @@ export default function ChatPage() {
     {
       role: 'assistant',
       content:
-        "Hi! I'm Sanctum, your authorized AI agent. I have read access to your connected services via Auth0 Token Vault. Ask me anything about your emails, GitHub issues, or Notion pages. If you want me to take action — send a reply, post a comment — I'll propose it and wait for your approval.",
+        "Hi! I'm Sanctum, your authorized AI agent. I have read access to your connected services via Auth0 Token Vault. Ask me anything about your emails, GitHub issues, or Outlook messages. If you want me to take action — send a reply, post a comment — I'll propose it and wait for your approval.",
     },
   ]);
   const [input, setInput] = useState('');

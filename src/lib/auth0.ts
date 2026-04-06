@@ -36,7 +36,7 @@ export async function getMgmtToken(): Promise<string> {
     }),
   });
 
-  const data = await res.json();
+  const data = await res.json() as { access_token: string; expires_in: number };
   mgmtToken = data.access_token;
   mgmtTokenExpiry = Date.now() + (data.expires_in - 60) * 1000;
   return mgmtToken!;

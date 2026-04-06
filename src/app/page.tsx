@@ -30,12 +30,12 @@ const steps = [
   {
     step: '01',
     title: 'Connect your services',
-    desc: 'Sign in with Auth0 and connect Gmail, GitHub, or Notion. Token Vault stores the OAuth tokens securely so Sanctum never touches raw credentials.',
+    desc: 'Sign in with Auth0 and connect Gmail, GitHub, or Outlook. Token Vault stores the OAuth tokens securely so Sanctum never touches raw credentials.',
   },
   {
     step: '02',
     title: 'Index your private context',
-    desc: 'Sanctum fetches emails, issues, and pages using scoped read tokens from Token Vault, then builds a private per-user retrieval index.',
+    desc: 'Sanctum fetches emails, issues, and messages using scoped read tokens from Token Vault, then builds a private per-user retrieval index.',
   },
   {
     step: '03',
@@ -108,7 +108,7 @@ export default function Home() {
           </h1>
 
           <p className="text-xl text-white/50 max-w-2xl mb-12 leading-relaxed">
-            Sanctum connects your AI agent to Gmail, GitHub, and Notion using Auth0 Token Vault
+            Sanctum connects your AI agent to Gmail, GitHub, and Outlook using Auth0 Token Vault
             to authenticate every action. Read anything. Write nothing without your approval.
           </p>
 

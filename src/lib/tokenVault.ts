@@ -14,7 +14,7 @@
 import { auth0 } from './auth0';
 import { getMgmtToken } from './auth0';
 
-export type ServiceConnection = 'google-oauth2' | 'github' | 'notion';
+export type ServiceConnection = 'google-oauth2' | 'github' | 'windowslive';
 
 export interface ConnectionStatus {
   connection: ServiceConnection;
@@ -29,6 +29,7 @@ export interface ConnectionStatus {
 
 interface Auth0Identity {
   connection?: string;
+  user_id?: string;
   profileData?: {
     created_at?: string;
   };
@@ -56,13 +57,13 @@ export const SERVICE_CONFIGS: Record<ServiceConnection, Omit<ConnectionStatus, '
     readScopes: ['repo:read', 'read:user'],
     writeScopes: ['repo', 'write:issues'],
   },
-  notion: {
-    connection: 'notion',
-    label: 'Notion',
-    icon: 'notion',
+  windowslive: {
+    connection: 'windowslive',
+    label: 'Microsoft (Outlook)',
+    icon: 'microsoft',
     scopes: [],
-    readScopes: ['read_content', 'read_user'],
-    writeScopes: ['update_content'],
+    readScopes: ['Mail.Read', 'User.Read'],
+    writeScopes: ['Mail.Send'],
   },
 };
 
@@ -73,9 +74,6 @@ export const SERVICE_CONFIGS: Record<ServiceConnection, Omit<ConnectionStatus, '
  * - Auth0 securely stores the user's OAuth tokens
  * - The agent retrieves them on-demand via getAccessTokenForConnection
  * - The agent never stores or sees the raw credentials
- *
- * @param connection - The Auth0 connection name (e.g., 'google-oauth2')
- * @param req - The Next.js request (needed for session context)
  */
 export async function getTokenForConnection(
   connection: ServiceConnection
@@ -85,7 +83,6 @@ export async function getTokenForConnection(
     return tokenResult?.token ?? null;
   } catch (err: unknown) {
     const code = typeof err === 'object' && err !== null && 'code' in err ? String(err.code) : '';
-    // RequiresLoginError — user hasn't connected this service yet
     if (code === 'missing_refresh_token' || code === 'missing_session') {
       return null;
     }
@@ -128,25 +125,6 @@ export async function getUserConnections(userId: string): Promise<ConnectionStat
   }
 }
 
-/**
- * Check current Token Vault availability for each configured service.
- * This is the most user-relevant signal for the dashboard because it reflects
- * whether the agent can actually retrieve a usable token right now.
- */
-export async function getCurrentConnectionStatuses(): Promise<ConnectionStatus[]> {
-  const entries = await Promise.all(
-    (Object.keys(SERVICE_CONFIGS) as ServiceConnection[]).map(async (conn) => {
-      const token = await getTokenForConnection(conn);
-      return {
-        ...SERVICE_CONFIGS[conn],
-        connected: !!token,
-      };
-    })
-  );
-
-  return entries;
-}
-
 function buildDisconnectedStatuses(): ConnectionStatus[] {
   return (Object.keys(SERVICE_CONFIGS) as ServiceConnection[]).map((conn) => ({
     ...SERVICE_CONFIGS[conn],
@@ -163,8 +141,23 @@ export async function revokeConnection(userId: string, connection: ServiceConnec
   try {
     const mgmtToken = await getMgmtToken();
 
+    // First, look up the identity to get the provider-specific user ID
+    const profileRes = await fetch(
+      `https://${process.env.AUTH0_DOMAIN}/api/v2/users/${encodeURIComponent(userId)}`,
+      { headers: { Authorization: `Bearer ${mgmtToken}` } }
+    );
+    if (!profileRes.ok) return false;
+
+    const profile = (await profileRes.json()) as Auth0UserProfile;
+    const identity = profile.identities?.find((id) => id.connection === connection);
+    if (!identity) return false; // not connected, nothing to revoke
+
+    // Auth0 unlink endpoint: DELETE /api/v2/users/{primary_id}/identities/{provider}/{provider_user_id}
+    const providerUserId = identity.user_id;
+    if (!providerUserId) return false;
+
     const res = await fetch(
-      `https://${process.env.AUTH0_DOMAIN}/api/v2/users/${encodeURIComponent(userId)}/identities/${connection}/${userId}`,
+      `https://${process.env.AUTH0_DOMAIN}/api/v2/users/${encodeURIComponent(userId)}/identities/${connection}/${providerUserId}`,
       {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${mgmtToken}` },

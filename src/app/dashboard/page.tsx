@@ -47,7 +47,7 @@ function formatRelativeTime(iso: string): string {
 const SERVICE_ICONS: Record<string, string> = {
   'google-oauth2': '🟢',
   github: '⚫',
-  notion: '⬜',
+  windowslive: '🔵',
 };
 
 export default function DashboardPage() {
