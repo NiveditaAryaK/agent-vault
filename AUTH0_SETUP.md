@@ -25,7 +25,7 @@ Go to the **Settings** tab of your new app:
 
 | Field | Value |
 |---|---|
-| Allowed Callback URLs | `http://localhost:3000/auth/callback` |
+| Allowed Callback URLs | `http://localhost:3000/api/auth/callback` |
 | Allowed Logout URLs | `http://localhost:3000` |
 | Allowed Web Origins | `http://localhost:3000` |
 
@@ -41,7 +41,7 @@ AUTH0_SECRET='<run: openssl rand -hex 32>'
 AUTH0_BASE_URL='http://localhost:3000'
 ```
 
-> **Note on `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`** — see Step 8 for these.
+> `GEMINI_API_KEY` is covered in Step 8.
 
 ---
 
@@ -226,7 +226,13 @@ If you see answers pulled from your inbox, Token Vault is working correctly.
 
 When deploying to Vercel or another host:
 
-1. Update `AUTH0_BASE_URL` to your production URL
-2. Add the production URL to **Allowed Callback URLs** and **Allowed Logout URLs** in Auth0
-3. Update the Google / GitHub OAuth app redirect URIs to match
-4. Set all env vars in your hosting platform's environment settings
+1. Deploy the app and note the production URL, for example `https://sanctum.vercel.app`
+2. Set `AUTH0_BASE_URL` to that production URL
+3. In Auth0, update:
+   - **Allowed Callback URLs**: `https://sanctum.vercel.app/api/auth/callback`
+   - **Allowed Logout URLs**: `https://sanctum.vercel.app`
+   - **Allowed Web Origins**: `https://sanctum.vercel.app`
+4. Keep `http://localhost:3000/api/auth/callback` and `http://localhost:3000` in Auth0 too, so local development still works
+5. Update the Google and GitHub app settings only if their app configuration needs a production homepage URL; their redirect URI to Auth0 remains your Auth0 tenant callback such as `https://sanctum-dev.us.auth0.com/login/callback`
+6. Add the same environment variables from `.env.example` into Vercel Project Settings → Environment Variables
+7. Redeploy after saving the environment variables

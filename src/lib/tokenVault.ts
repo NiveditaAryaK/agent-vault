@@ -13,7 +13,6 @@
 
 import { auth0 } from './auth0';
 import { getMgmtToken } from './auth0';
-import { NextRequest } from 'next/server';
 
 export type ServiceConnection = 'google-oauth2' | 'github' | 'notion';
 
@@ -26,6 +25,18 @@ export interface ConnectionStatus {
   readScopes: string[];
   writeScopes: string[];
   connectedAt?: string;
+}
+
+interface Auth0Identity {
+  connection?: string;
+  profileData?: {
+    created_at?: string;
+  };
+  access_token_scope?: string;
+}
+
+interface Auth0UserProfile {
+  identities?: Auth0Identity[];
 }
 
 export const SERVICE_CONFIGS: Record<ServiceConnection, Omit<ConnectionStatus, 'connected' | 'connectedAt'>> = {
@@ -67,18 +78,20 @@ export const SERVICE_CONFIGS: Record<ServiceConnection, Omit<ConnectionStatus, '
  * @param req - The Next.js request (needed for session context)
  */
 export async function getTokenForConnection(
-  connection: ServiceConnection,
-  req?: NextRequest
+  connection: ServiceConnection
 ): Promise<string | null> {
   try {
     const tokenResult = await auth0.getAccessTokenForConnection({ connection });
     return tokenResult?.token ?? null;
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const code = typeof err === 'object' && err !== null && 'code' in err ? String(err.code) : '';
     // RequiresLoginError — user hasn't connected this service yet
-    if (err?.code === 'missing_refresh_token' || err?.code === 'missing_session') {
+    if (code === 'missing_refresh_token' || code === 'missing_session') {
       return null;
     }
-    console.error(`Token Vault error for ${connection}:`, err?.message);
+    const message =
+      typeof err === 'object' && err !== null && 'message' in err ? String(err.message) : 'Unknown error';
+    console.error(`Token Vault error for ${connection}:`, message);
     return null;
   }
 }
@@ -98,11 +111,11 @@ export async function getUserConnections(userId: string): Promise<ConnectionStat
 
     if (!res.ok) return buildDisconnectedStatuses();
 
-    const user = await res.json();
-    const identities: any[] = user.identities || [];
+    const user = (await res.json()) as Auth0UserProfile;
+    const identities = user.identities || [];
 
     return (Object.keys(SERVICE_CONFIGS) as ServiceConnection[]).map((conn) => {
-      const identity = identities.find((id: any) => id.connection === conn);
+      const identity = identities.find((id) => id.connection === conn);
       return {
         ...SERVICE_CONFIGS[conn],
         connected: !!identity,

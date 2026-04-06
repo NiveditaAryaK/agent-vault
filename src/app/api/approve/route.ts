@@ -3,6 +3,10 @@ import { auth0 } from '@/lib/auth0';
 import { executeApprovedAction } from '@/lib/rag';
 import { logAudit } from '@/lib/audit';
 
+interface SessionWithCreatedAt {
+  createdAt?: number;
+}
+
 /**
  * Step-up auth approval endpoint.
  *
@@ -34,7 +38,7 @@ export async function POST(req: NextRequest) {
   const now = Math.floor(Date.now() / 1000);
   const authTime =
     (session.user.auth_time as number | undefined) ||
-    Math.floor(((session as any).createdAt as number | undefined) || 0);
+    Math.floor((session as SessionWithCreatedAt).createdAt || 0);
 
   const STEP_UP_WINDOW = 300; // 5 minutes
   const isAuthFresh = authTime > 0 && now - authTime < STEP_UP_WINDOW;

@@ -16,11 +16,71 @@ import { logAudit } from './audit';
 // Lazy-loaded sentence-transformers model (runs locally, no API key needed).
 // Uses all-MiniLM-L6-v2 — a lightweight 384-dim model great for semantic search.
 // First call downloads ~90MB and caches it; subsequent calls are fast.
-let _embedder: any = null;
+type Embedder = (
+  text: string,
+  options: { pooling: 'mean'; normalize: true }
+) => Promise<{ data: Float32Array | number[] }>;
+
+interface GmailHeader {
+  name?: string;
+  value?: string;
+}
+
+interface GmailPayload {
+  body?: {
+    data?: string;
+  };
+  headers?: GmailHeader[];
+  parts?: GmailPayload[];
+  mimeType?: string;
+}
+
+interface GmailMessageSummary {
+  id: string;
+}
+
+interface GmailMessageListResponse {
+  messages?: GmailMessageSummary[];
+}
+
+interface GmailMessageResponse {
+  id: string;
+  payload?: GmailPayload;
+}
+
+interface GitHubIssue {
+  id: number;
+  number: number;
+  title: string;
+  repository_url?: string;
+  state: string;
+  body?: string;
+  html_url: string;
+}
+
+interface NotionTitleProperty {
+  title?: Array<{ plain_text?: string }>;
+}
+
+interface NotionPageResult {
+  id: string;
+  last_edited_time: string;
+  url: string;
+  properties?: {
+    title?: NotionTitleProperty;
+    Name?: NotionTitleProperty;
+  };
+}
+
+interface NotionSearchResponse {
+  results?: NotionPageResult[];
+}
+
+let _embedder: Embedder | null = null;
 async function getEmbedder() {
   if (!_embedder) {
     const { pipeline } = await import('@xenova/transformers');
-    _embedder = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
+    _embedder = (await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2')) as Embedder;
   }
   return _embedder;
 }
@@ -94,8 +154,8 @@ async function fetchGmailChunks(): Promise<DocumentChunk[]> {
 
   if (!res.ok) return [];
 
-  const data = await res.json();
-  const messages: any[] = data.messages || [];
+  const data = (await res.json()) as GmailMessageListResponse;
+  const messages = data.messages || [];
   const chunks: DocumentChunk[] = [];
 
   for (const msg of messages.slice(0, 10)) {
@@ -105,11 +165,11 @@ async function fetchGmailChunks(): Promise<DocumentChunk[]> {
     );
     if (!msgRes.ok) continue;
 
-    const msgData = await msgRes.json();
+    const msgData = (await msgRes.json()) as GmailMessageResponse;
     const headers = msgData.payload?.headers || [];
-    const subject = headers.find((h: any) => h.name === 'Subject')?.value || '(no subject)';
-    const from = headers.find((h: any) => h.name === 'From')?.value || '';
-    const date = headers.find((h: any) => h.name === 'Date')?.value || '';
+    const subject = headers.find((h) => h.name === 'Subject')?.value || '(no subject)';
+    const from = headers.find((h) => h.name === 'From')?.value || '';
+    const date = headers.find((h) => h.name === 'Date')?.value || '';
     const body = extractEmailBody(msgData.payload);
 
     if (body.trim()) {
@@ -126,7 +186,7 @@ async function fetchGmailChunks(): Promise<DocumentChunk[]> {
   return chunks;
 }
 
-function extractEmailBody(payload: any): string {
+function extractEmailBody(payload?: GmailPayload): string {
   if (!payload) return '';
   if (payload.body?.data) {
     return Buffer.from(payload.body.data, 'base64').toString('utf-8');
@@ -154,10 +214,10 @@ async function fetchGithubChunks(): Promise<DocumentChunk[]> {
 
   if (!res.ok) return [];
 
-  const issues = await res.json();
+  const issues = (await res.json()) as unknown;
   if (!Array.isArray(issues)) return [];
 
-  return issues.slice(0, 10).map((issue: any) => ({
+  return (issues as GitHubIssue[]).slice(0, 10).map((issue) => ({
     id: `github-issue-${issue.id}`,
     content: `GitHub Issue #${issue.number}: ${issue.title}\nRepo: ${issue.repository_url?.split('/').slice(-2).join('/')}\nStatus: ${issue.state}\n\n${issue.body?.slice(0, 800) || '(no body)'}`,
     source: 'GitHub',
@@ -187,10 +247,10 @@ async function fetchNotionChunks(): Promise<DocumentChunk[]> {
 
   if (!res.ok) return [];
 
-  const data = await res.json();
-  const results: any[] = data.results || [];
+  const data = (await res.json()) as NotionSearchResponse;
+  const results = data.results || [];
 
-  return results.map((page: any) => {
+  return results.map((page) => {
     const title =
       page.properties?.title?.title?.[0]?.plain_text ||
       page.properties?.Name?.title?.[0]?.plain_text ||
@@ -226,8 +286,9 @@ async function getEmbedding(text: string): Promise<number[]> {
     // all-MiniLM-L6-v2 has a 256-token limit; slice conservatively
     const output = await embedder(text.slice(0, 512), { pooling: 'mean', normalize: true });
     return Array.from(output.data as Float32Array);
-  } catch (err) {
-    console.warn('Local embedding model failed, using keyword fallback:', (err as Error).message);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.warn('Local embedding model failed, using keyword fallback:', message);
     return keywordEmbedding(text);
   }
 }
@@ -400,8 +461,9 @@ export async function executeApprovedAction(
       default:
         return { success: false, message: 'Unknown action type.' };
     }
-  } catch (err: any) {
-    return { success: false, message: err.message };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    return { success: false, message };
   }
 }
 

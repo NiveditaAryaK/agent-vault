@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { auth0 } from '@/lib/auth0';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ auth0: string }> }) {
@@ -16,12 +16,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ auth
   }
 
   if (action === 'logout') {
-    return auth0.startInteractiveLogin({ returnTo: '/' });
+    return auth0.middleware(req);
   }
 
   if (action === 'callback') {
-    return NextResponse.redirect(new URL('/dashboard', req.url));
+    return auth0.middleware(req);
   }
 
-  return NextResponse.json({ error: 'Unknown auth action' }, { status: 404 });
+  return auth0.middleware(req);
 }

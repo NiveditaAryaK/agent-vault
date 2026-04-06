@@ -59,7 +59,6 @@ export default function DashboardPage() {
   const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
 
   async function fetchPermissions() {
-    setLoading(true);
     const res = await fetch('/api/permissions');
     if (res.ok) {
       const data = await res.json();
@@ -78,8 +77,9 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
-    fetchPermissions();
-    fetchAuditLog();
+    void (async () => {
+      await Promise.all([fetchPermissions(), fetchAuditLog()]);
+    })();
   }, []);
 
   async function handleIndex() {
@@ -128,12 +128,12 @@ export default function DashboardPage() {
             >
               Open chat <ArrowRight className="w-3.5 h-3.5" />
             </Link>
-            <a
+            <Link
               href="/api/auth/logout"
               className="text-sm text-white/40 hover:text-white transition-colors"
             >
               Sign out
-            </a>
+            </Link>
           </div>
         </header>
 
@@ -224,12 +224,12 @@ export default function DashboardPage() {
                             {revoking === conn.connection ? 'Revoking...' : 'Revoke access'}
                           </button>
                         ) : (
-                          <a
+                          <Link
                             href={`/api/auth/login?connection=${conn.connection}&returnTo=/dashboard`}
                             className="text-xs text-violet-400 hover:text-violet-300 bg-violet-500/10 hover:bg-violet-500/15 border border-violet-500/20 px-3 py-1.5 rounded-lg transition-colors"
                           >
                             Connect
-                          </a>
+                          </Link>
                         )}
                       </div>
                     </div>
