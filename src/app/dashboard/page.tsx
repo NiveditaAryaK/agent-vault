@@ -1,4 +1,5 @@
 'use client';
+/* eslint-disable @next/next/no-html-link-for-pages */
 
 import { useEffect, useState } from 'react';
 import { Shield, RefreshCw, CheckCircle, XCircle, Trash2, Database, ArrowRight, ClipboardList } from 'lucide-react';
@@ -105,10 +106,6 @@ export default function DashboardPage() {
     setRevoking(null);
   }
 
-  function navigateTo(url: string) {
-    window.location.assign(url);
-  }
-
   const connectedCount = connections.filter((c) => c.connected).length;
 
   return (
@@ -132,13 +129,12 @@ export default function DashboardPage() {
             >
               Open chat <ArrowRight className="w-3.5 h-3.5" />
             </Link>
-            <button
-              type="button"
-              onClick={() => navigateTo('/api/auth/logout')}
-              className="text-sm text-white/40 hover:text-white transition-colors cursor-pointer"
+            <a
+              href="/api/auth/logout"
+              className="text-sm text-white/40 hover:text-white transition-colors"
             >
               Sign out
-            </button>
+            </a>
           </div>
         </header>
 
@@ -229,13 +225,12 @@ export default function DashboardPage() {
                             {revoking === conn.connection ? 'Revoking...' : 'Revoke access'}
                           </button>
                         ) : (
-                          <button
-                            type="button"
-                            onClick={() => navigateTo(`/api/auth/login?connection=${conn.connection}&returnTo=/dashboard`)}
-                            className="text-xs text-violet-400 hover:text-violet-300 bg-violet-500/10 hover:bg-violet-500/15 border border-violet-500/20 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                          <a
+                            href={`/api/auth/login?connection=${conn.connection}&returnTo=/dashboard`}
+                            className="text-xs text-violet-400 hover:text-violet-300 bg-violet-500/10 hover:bg-violet-500/15 border border-violet-500/20 px-3 py-1.5 rounded-lg transition-colors"
                           >
                             Connect
-                          </button>
+                          </a>
                         )}
                       </div>
                     </div>
