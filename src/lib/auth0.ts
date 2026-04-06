@@ -14,7 +14,7 @@ export const auth0 = new Auth0Client({
     connectAccount: '/api/auth/connect',
   },
   authorizationParameters: {
-    scope: 'openid profile email',
+    scope: 'openid profile email offline_access',
   },
 });
 
