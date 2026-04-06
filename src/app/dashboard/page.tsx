@@ -105,6 +105,10 @@ export default function DashboardPage() {
     setRevoking(null);
   }
 
+  function navigateTo(url: string) {
+    window.location.assign(url);
+  }
+
   const connectedCount = connections.filter((c) => c.connected).length;
 
   return (
@@ -128,12 +132,13 @@ export default function DashboardPage() {
             >
               Open chat <ArrowRight className="w-3.5 h-3.5" />
             </Link>
-            <Link
-              href="/api/auth/logout"
-              className="text-sm text-white/40 hover:text-white transition-colors"
+            <button
+              type="button"
+              onClick={() => navigateTo('/api/auth/logout')}
+              className="text-sm text-white/40 hover:text-white transition-colors cursor-pointer"
             >
               Sign out
-            </Link>
+            </button>
           </div>
         </header>
 
@@ -224,12 +229,13 @@ export default function DashboardPage() {
                             {revoking === conn.connection ? 'Revoking...' : 'Revoke access'}
                           </button>
                         ) : (
-                          <Link
-                            href={`/api/auth/login?connection=${conn.connection}&returnTo=/dashboard`}
-                            className="text-xs text-violet-400 hover:text-violet-300 bg-violet-500/10 hover:bg-violet-500/15 border border-violet-500/20 px-3 py-1.5 rounded-lg transition-colors"
+                          <button
+                            type="button"
+                            onClick={() => navigateTo(`/api/auth/login?connection=${conn.connection}&returnTo=/dashboard`)}
+                            className="text-xs text-violet-400 hover:text-violet-300 bg-violet-500/10 hover:bg-violet-500/15 border border-violet-500/20 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
                           >
                             Connect
-                          </Link>
+                          </button>
                         )}
                       </div>
                     </div>

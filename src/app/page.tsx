@@ -59,15 +59,19 @@ export default function Home() {
           <span className="font-semibold text-lg tracking-tight">Sanctum</span>
         </div>
         <div className="flex items-center gap-4">
-          <Link href="/api/auth/login" className="text-sm text-white/60 hover:text-white transition-colors">
-            Sign in
-          </Link>
-          <Link
-            href="/api/auth/login"
-            className="text-sm bg-violet-600 hover:bg-violet-500 px-4 py-2 rounded-lg font-medium transition-colors"
-          >
-            Get started
-          </Link>
+          <form action="/api/auth/login" method="get">
+            <button type="submit" className="text-sm text-white/60 hover:text-white transition-colors cursor-pointer">
+              Sign in
+            </button>
+          </form>
+          <form action="/api/auth/login" method="get">
+            <button
+              type="submit"
+              className="text-sm bg-violet-600 hover:bg-violet-500 px-4 py-2 rounded-lg font-medium transition-colors cursor-pointer"
+            >
+              Get started
+            </button>
+          </form>
         </div>
       </nav>
 
@@ -112,12 +116,14 @@ export default function Home() {
           </p>
 
           <div className="flex items-center gap-4 mb-20">
-            <Link
-              href="/api/auth/login"
-              className="flex items-center gap-2 bg-violet-600 hover:bg-violet-500 px-6 py-3 rounded-xl font-semibold text-base transition-colors"
-            >
-              Connect your services <ArrowRight className="w-4 h-4" />
-            </Link>
+            <form action="/api/auth/login" method="get">
+              <button
+                type="submit"
+                className="flex items-center gap-2 bg-violet-600 hover:bg-violet-500 px-6 py-3 rounded-xl font-semibold text-base transition-colors cursor-pointer"
+              >
+                Connect your services <ArrowRight className="w-4 h-4" />
+              </button>
+            </form>
             <Link href="#how-it-works" className="text-white/50 hover:text-white text-base transition-colors">
               How it works
             </Link>
