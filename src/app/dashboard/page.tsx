@@ -47,7 +47,6 @@ function formatRelativeTime(iso: string): string {
 const SERVICE_ICONS: Record<string, string> = {
   'google-oauth2': '🟢',
   github: '⚫',
-  windowslive: '🔵',
 };
 
 export default function DashboardPage() {
@@ -59,10 +58,19 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
 
-  async function fetchPermissions() {
+  async function fetchPermissions(retries = 2) {
     const res = await fetch('/api/permissions');
     if (res.ok) {
       const data = await res.json();
+      // If a connect flow just completed but Management API hasn't caught up yet,
+      // retry once after a short delay so the UI reflects the new connection.
+      const anyConnected = data.connections?.some((c: ConnectionStatus) => c.connected);
+      const params = new URLSearchParams(window.location.search);
+      const justConnected = params.get('connected') === '1';
+      if (justConnected && !anyConnected && retries > 0) {
+        setTimeout(() => fetchPermissions(retries - 1), 1500);
+        return;
+      }
       setConnections(data.connections);
       setIndexedCount(data.indexedCount);
     }
@@ -143,7 +151,7 @@ export default function DashboardPage() {
             {/* Stats */}
             <div className="grid grid-cols-3 gap-4 mb-10">
               {[
-                { label: 'Connected services', value: `${connectedCount}/3`, color: 'violet' },
+                { label: 'Connected services', value: `${connectedCount}/2`, color: 'violet' },
                 { label: 'Indexed documents', value: indexedCount, color: 'indigo' },
                 { label: 'Pending approvals', value: '0', color: 'green' },
               ].map((stat) => (

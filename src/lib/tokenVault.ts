@@ -14,7 +14,7 @@
 import { auth0 } from './auth0';
 import { getMgmtToken } from './auth0';
 
-export type ServiceConnection = 'google-oauth2' | 'github' | 'windowslive';
+export type ServiceConnection = 'google-oauth2' | 'github';
 
 export interface ConnectionStatus {
   connection: ServiceConnection;
@@ -56,14 +56,6 @@ export const SERVICE_CONFIGS: Record<ServiceConnection, Omit<ConnectionStatus, '
     scopes: [],
     readScopes: ['repo:read', 'read:user'],
     writeScopes: ['repo', 'write:issues'],
-  },
-  windowslive: {
-    connection: 'windowslive',
-    label: 'Microsoft (Outlook)',
-    icon: 'microsoft',
-    scopes: [],
-    readScopes: ['Mail.Read', 'User.Read'],
-    writeScopes: ['Mail.Send'],
   },
 };
 

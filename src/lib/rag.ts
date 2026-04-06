@@ -74,7 +74,7 @@ export interface DocumentChunk {
   id: string;
   content: string;
   source: string;
-  sourceType: 'email' | 'drive' | 'github' | 'outlook';
+  sourceType: 'email' | 'drive' | 'github';
   metadata: Record<string, string>;
   embedding?: number[];
 }
@@ -107,13 +107,7 @@ export async function indexUserData(userId: string): Promise<{ indexed: number; 
         if (githubChunks.length > 0) sources.push('GitHub');
       }
 
-      if (conn.connection === 'windowslive') {
-        const outlookChunks = await fetchOutlookChunks();
-        chunks.push(...outlookChunks);
-        if (outlookChunks.length > 0) sources.push('Outlook');
-      }
-
-    } catch (err) {
+} catch (err) {
       console.error(`Failed to index ${conn.connection}:`, err);
     }
   }
@@ -215,33 +209,6 @@ async function fetchGithubChunks(): Promise<DocumentChunk[]> {
   }));
 }
 
-async function fetchOutlookChunks(): Promise<DocumentChunk[]> {
-  // Microsoft Graph API — fetch recent Outlook emails via Token Vault token
-  const res = await callWithVaultToken(
-    'windowslive',
-    'https://graph.microsoft.com/v1.0/me/messages?$top=20&$select=subject,from,receivedDateTime,bodyPreview&$orderby=receivedDateTime desc',
-    { headers: { Accept: 'application/json' } }
-  );
-
-  if (!res.ok) return [];
-
-  const data = await res.json() as { value?: any[] };
-  const messages: any[] = data.value || [];
-
-  return messages.slice(0, 10).map((msg: any) => ({
-    id: `outlook-${msg.id}`,
-    content: `Outlook Email\nFrom: ${msg.from?.emailAddress?.name || ''} <${msg.from?.emailAddress?.address || ''}>\nSubject: ${msg.subject || '(no subject)'}\nDate: ${msg.receivedDateTime || ''}\n\n${msg.bodyPreview || ''}`,
-    source: 'Outlook',
-    sourceType: 'outlook' as const,
-    metadata: {
-      subject: msg.subject || '',
-      from: msg.from?.emailAddress?.address || '',
-      date: msg.receivedDateTime || '',
-      messageId: msg.id,
-    },
-  }));
-}
-
 // Fallback keyword-frequency embedding (used only if the local model fails to load)
 function keywordEmbedding(text: string): number[] {
   const words = text.toLowerCase().split(/\W+/).filter((w) => w.length > 3);
@@ -312,7 +279,7 @@ export interface ChatMessage {
 
 export interface PendingAction {
   id: string;
-  type: 'send_email' | 'post_github_comment' | 'send_outlook_email';
+  type: 'send_email' | 'post_github_comment';
   description: string;
   details: Record<string, string>;
   requiresStepUp: boolean;
@@ -345,7 +312,7 @@ export async function chat(
     ? relevantChunks.map((c) => `[${c.source}] ${c.content}`).join('\n\n---\n\n')
     : 'No indexed data yet. The user has not indexed their services, or no connected services have data.';
 
-  const systemPrompt = `You are Sanctum — a personal AI agent that reads and acts on the user's data from Gmail, GitHub, and Outlook.
+  const systemPrompt = `You are Sanctum — a personal AI agent that reads and acts on the user's data from Gmail and GitHub.
 
 Your security contract:
 - You have READ access to data indexed from the user's connected services via Auth0 Token Vault
@@ -359,7 +326,7 @@ ${context}
 If the user asks you to WRITE, SEND, or MODIFY anything, respond normally then append an action block:
 <action>
 {
-  "type": "send_email|post_github_comment|send_outlook_email",
+  "type": "send_email|post_github_comment",
   "description": "One-line description of what you'll do",
   "details": { "key": "value" }
 }
@@ -429,8 +396,6 @@ export async function executeApprovedAction(
         return await sendEmail(action.details);
       case 'post_github_comment':
         return await postGithubComment(action.details);
-      case 'send_outlook_email':
-        return await sendOutlookEmail(action.details);
       default:
         return { success: false, message: 'Unknown action type.' };
     }
@@ -475,29 +440,6 @@ async function postGithubComment(details: Record<string, string>) {
 
   if (res.ok) return { success: true, message: 'GitHub comment posted.' };
   return { success: false, message: 'Failed to post GitHub comment. Check write scope.' };
-}
-
-async function sendOutlookEmail(details: Record<string, string>) {
-  const res = await callWithVaultToken(
-    'windowslive',
-    'https://graph.microsoft.com/v1.0/me/sendMail',
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: {
-          subject: details.subject,
-          body: { contentType: 'Text', content: details.body },
-          toRecipients: [{ emailAddress: { address: details.to } }],
-        },
-      }),
-    }
-  );
-
-  if (res.ok || res.status === 202)
-    return { success: true, message: `Outlook email sent to ${details.to}` };
-  const err = await res.json().catch(() => ({})) as { error?: { message?: string } };
-  return { success: false, message: `Failed to send Outlook email: ${err?.error?.message || res.statusText}` };
 }
 
 export function hasIndexedData(userId: string): boolean {
