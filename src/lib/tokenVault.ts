@@ -98,7 +98,10 @@ export async function getUserConnections(userId: string): Promise<ConnectionStat
       { headers: { Authorization: `Bearer ${mgmtToken}` } }
     );
 
-    if (!res.ok) return buildDisconnectedStatuses();
+    if (!res.ok) {
+      console.error('[tokenVault] Management API fetch failed:', res.status, await res.text());
+      return buildDisconnectedStatuses();
+    }
 
     const user = (await res.json()) as Auth0UserProfile;
     const identities = user.identities || [];

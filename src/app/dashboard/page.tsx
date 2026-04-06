@@ -68,7 +68,7 @@ export default function DashboardPage() {
       const params = new URLSearchParams(window.location.search);
       const justConnected = params.get('connected') === '1';
       if (justConnected && !anyConnected && retries > 0) {
-        setTimeout(() => fetchPermissions(retries - 1), 1500);
+        setTimeout(() => fetchPermissions(retries - 1), 4000);
         return;
       }
       setConnections(data.connections);

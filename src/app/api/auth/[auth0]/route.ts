@@ -20,15 +20,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ auth
     });
   }
 
-  if (action === 'connect') {
-    const connection = url.searchParams.get('connection') || undefined;
-    const returnTo = url.searchParams.get('returnTo') || '/dashboard';
-    return auth0.startInteractiveLogin({
-      authorizationParameters: connection ? { connection } : undefined,
-      returnTo: `${returnTo}${returnTo.includes('?') ? '&' : '?'}connected=1`,
-    });
-  }
-
   if (action === 'logout') {
     return auth0.middleware(req);
   }

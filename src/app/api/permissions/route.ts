@@ -11,5 +11,9 @@ export async function GET() {
   const connections = await getUserConnections(userId);
   const indexedCount = getIndexedCount(userId);
 
+  // Temporary debug — remove after confirming connections work
+  console.log('[permissions] userId:', userId);
+  console.log('[permissions] connections:', JSON.stringify(connections.map(c => ({ connection: c.connection, connected: c.connected }))));
+
   return NextResponse.json({ connections, indexedCount });
 }
