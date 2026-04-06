@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Shield, Send, AlertCircle, CheckCircle, XCircle, Info } from 'lucide-react';
+import { Shield, Send, AlertCircle, CheckCircle, XCircle, Info, Lock } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
 
 interface PendingAction {
@@ -37,6 +37,7 @@ export default function ChatPage() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [approving, setApproving] = useState<string | null>(null);
+  const [stepUpRequired, setStepUpRequired] = useState<Record<string, string>>({}); // actionId → loginUrl
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -86,13 +87,26 @@ export default function ChatPage() {
 
   async function handleApprove(actionId: string, messageIndex: number) {
     setApproving(actionId);
+    // Clear any previous step-up state for this action
+    setStepUpRequired((prev) => { const n = { ...prev }; delete n[actionId]; return n; });
+
     const res = await fetch('/api/approve', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ actionId }),
     });
-    const result = await res.json();
 
+    if (res.status === 403) {
+      const data = await res.json();
+      if (data.requiresStepUp) {
+        // Store the loginUrl so we can show the step-up UI without losing the action
+        setStepUpRequired((prev) => ({ ...prev, [actionId]: data.loginUrl }));
+        setApproving(null);
+        return;
+      }
+    }
+
+    const result = await res.json();
     setMessages((prev) =>
       prev.map((msg, i) =>
         i === messageIndex
@@ -201,14 +215,39 @@ export default function ChatPage() {
                             <span className="text-white/40 capitalize">{k}:</span> {v}
                           </div>
                         ))}
+
+                        {/* Step-up auth banner — shown when server requires re-authentication */}
+                        {stepUpRequired[msg.pendingAction.id] && (
+                          <div className="mt-3 flex items-start gap-2 bg-violet-950/40 border border-violet-500/25 rounded-lg px-3 py-2.5">
+                            <Lock className="w-3.5 h-3.5 text-violet-400 shrink-0 mt-0.5" />
+                            <div className="flex-1">
+                              <div className="text-xs font-medium text-violet-300 mb-1">
+                                Step-up authentication required
+                              </div>
+                              <div className="text-xs text-white/40 mb-2">
+                                Write actions require recent identity verification. Re-authenticate in a new tab, then click Approve below.
+                              </div>
+                              <a
+                                href={stepUpRequired[msg.pendingAction.id]}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 text-xs bg-violet-600 hover:bg-violet-500 px-3 py-1.5 rounded-lg font-medium transition-colors"
+                              >
+                                <Lock className="w-3 h-3" />
+                                Re-verify identity
+                              </a>
+                            </div>
+                          </div>
+                        )}
+
                         <div className="flex gap-2 mt-3">
                           <button
                             onClick={() => handleApprove(msg.pendingAction!.id, i)}
                             disabled={approving === msg.pendingAction.id}
-                            className="flex items-center gap-1.5 text-xs bg-green-600 hover:bg-green-500 px-3 py-1.5 rounded-lg font-medium transition-colors"
+                            className="flex items-center gap-1.5 text-xs bg-green-600 hover:bg-green-500 disabled:bg-white/5 disabled:text-white/20 px-3 py-1.5 rounded-lg font-medium transition-colors"
                           >
                             <CheckCircle className="w-3 h-3" />
-                            {approving === msg.pendingAction.id ? 'Executing...' : 'Approve'}
+                            {approving === msg.pendingAction.id ? 'Verifying...' : stepUpRequired[msg.pendingAction.id] ? 'Approve (after re-verify)' : 'Approve'}
                           </button>
                           <button
                             onClick={() => handleDeny(msg.pendingAction!.id, i)}

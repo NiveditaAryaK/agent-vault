@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Shield, RefreshCw, CheckCircle, XCircle, Trash2, Database, ArrowRight } from 'lucide-react';
+import { Shield, RefreshCw, CheckCircle, XCircle, Trash2, Database, ArrowRight, ClipboardList } from 'lucide-react';
 import Link from 'next/link';
 import Sidebar from '@/components/Sidebar';
 
@@ -13,6 +13,34 @@ interface ConnectionStatus {
   readScopes: string[];
   writeScopes: string[];
   connectedAt?: string;
+}
+
+interface AuditEntry {
+  id: string;
+  timestamp: string;
+  action: string;
+  type: string;
+  details?: string;
+  source?: string;
+  success?: boolean;
+}
+
+const AUDIT_TYPE_STYLES: Record<string, string> = {
+  index: 'text-blue-400 bg-blue-500/10',
+  action_staged: 'text-orange-400 bg-orange-500/10',
+  action_approved: 'text-green-400 bg-green-500/10',
+  action_denied: 'text-white/30 bg-white/5',
+  revoke: 'text-red-400 bg-red-500/10',
+  stepup_required: 'text-violet-400 bg-violet-500/10',
+  chat: 'text-white/40 bg-white/5',
+};
+
+function formatRelativeTime(iso: string): string {
+  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (diff < 60) return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return new Date(iso).toLocaleDateString();
 }
 
 const SERVICE_ICONS: Record<string, string> = {
@@ -28,6 +56,7 @@ export default function DashboardPage() {
   const [indexResult, setIndexResult] = useState<{ indexed: number; sources: string[] } | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
 
   async function fetchPermissions() {
     setLoading(true);
@@ -40,7 +69,18 @@ export default function DashboardPage() {
     setLoading(false);
   }
 
-  useEffect(() => { fetchPermissions(); }, []);
+  async function fetchAuditLog() {
+    const res = await fetch('/api/audit');
+    if (res.ok) {
+      const data = await res.json();
+      setAuditLog(data.entries || []);
+    }
+  }
+
+  useEffect(() => {
+    fetchPermissions();
+    fetchAuditLog();
+  }, []);
 
   async function handleIndex() {
     setIndexing(true);
@@ -259,6 +299,63 @@ export default function DashboardPage() {
                   </ul>
                 </div>
               </div>
+            </section>
+
+            {/* Audit log */}
+            <section className="mt-8">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-semibold text-lg flex items-center gap-2">
+                  <ClipboardList className="w-4 h-4 text-white/40" />
+                  Agent activity log
+                </h2>
+                <button
+                  onClick={fetchAuditLog}
+                  className="flex items-center gap-1.5 text-xs text-white/30 hover:text-white/60 transition-colors"
+                >
+                  <RefreshCw className="w-3 h-3" /> Refresh
+                </button>
+              </div>
+
+              {auditLog.length === 0 ? (
+                <div className="text-center text-white/20 text-sm py-10 border border-white/5 rounded-2xl bg-white/[0.01]">
+                  No activity yet. Connect a service and start chatting.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {auditLog.slice(0, 20).map((entry) => (
+                    <div
+                      key={entry.id}
+                      className="flex items-start gap-3 bg-white/[0.02] border border-white/5 rounded-xl px-4 py-3"
+                    >
+                      <div className="shrink-0 mt-0.5">
+                        {entry.success === false ? (
+                          <XCircle className="w-3.5 h-3.5 text-white/25" />
+                        ) : entry.success === true ? (
+                          <CheckCircle className="w-3.5 h-3.5 text-green-500/60" />
+                        ) : (
+                          <div className="w-3.5 h-3.5 rounded-full border border-white/20 mt-0.5" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm text-white/70 truncate">{entry.action}</span>
+                          <span
+                            className={`text-xs px-1.5 py-0.5 rounded shrink-0 ${AUDIT_TYPE_STYLES[entry.type] || 'text-white/30 bg-white/5'}`}
+                          >
+                            {entry.type.replace(/_/g, ' ')}
+                          </span>
+                        </div>
+                        {entry.details && (
+                          <div className="text-xs text-white/30 mt-0.5 truncate">{entry.details}</div>
+                        )}
+                      </div>
+                      <div className="text-xs text-white/20 shrink-0 mt-0.5">
+                        {formatRelativeTime(entry.timestamp)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </section>
           </div>
         </main>

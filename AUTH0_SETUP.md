@@ -41,6 +41,8 @@ AUTH0_SECRET='<run: openssl rand -hex 32>'
 AUTH0_BASE_URL='http://localhost:3000'
 ```
 
+> **Note on `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`** — see Step 8 for these.
+
 ---
 
 ## Step 3: Enable Token Vault
@@ -172,7 +174,24 @@ AUTH0_MGMT_CLIENT_SECRET='<Sanctum Management Client Secret>'
 
 ---
 
-## Step 8: Verify the setup
+## Step 8: Add AI API keys
+
+Sanctum uses Gemini for reasoning and a local embedding model for RAG. Only one API key is needed:
+
+```env
+# Required — used for chat reasoning (Gemini 2.0 Flash)
+GEMINI_API_KEY='AIza...'
+```
+
+Get your free Gemini API key at: [aistudio.google.com](https://aistudio.google.com) → **Get API key**
+
+> **Gemini 2.0 Flash is free** with generous rate limits (15 RPM, 1M TPM on the free tier) — more than enough for a demo.
+
+> **No OpenAI key needed.** Embeddings are generated locally using `sentence-transformers/all-MiniLM-L6-v2` via `@xenova/transformers`. The model (~90MB) is downloaded automatically on first run and cached. No API key, no cost, no rate limits.
+
+---
+
+## Step 9: Verify the setup
 
 Run the app:
 

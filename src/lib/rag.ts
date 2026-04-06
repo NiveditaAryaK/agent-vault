@@ -9,10 +9,23 @@
  * Write actions are staged and require step-up auth before execution.
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { callWithVaultToken, getUserConnections } from './tokenVault';
+import { logAudit } from './audit';
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
+// Lazy-loaded sentence-transformers model (runs locally, no API key needed).
+// Uses all-MiniLM-L6-v2 — a lightweight 384-dim model great for semantic search.
+// First call downloads ~90MB and caches it; subsequent calls are fast.
+let _embedder: any = null;
+async function getEmbedder() {
+  if (!_embedder) {
+    const { pipeline } = await import('@xenova/transformers');
+    _embedder = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
+  }
+  return _embedder;
+}
+
+const genai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
 export interface DocumentChunk {
   id: string;
@@ -61,7 +74,15 @@ export async function indexUserData(userId: string): Promise<{ indexed: number; 
     }
   }
 
-  userStores.set(userId, embedChunks(chunks));
+  userStores.set(userId, await embedChunks(chunks));
+
+  logAudit(userId, {
+    action: `Indexed ${chunks.length} document${chunks.length !== 1 ? 's' : ''}`,
+    type: 'index',
+    details: sources.length ? `Sources: ${sources.join(', ')}` : 'No sources returned data',
+    success: true,
+  });
+
   return { indexed: chunks.length, sources };
 }
 
@@ -128,7 +149,7 @@ async function fetchGithubChunks(): Promise<DocumentChunk[]> {
   const res = await callWithVaultToken(
     'github',
     'https://api.github.com/issues?filter=assigned&state=open&per_page=20',
-    { headers: { Accept: 'application/vnd.github.v3+json' } }
+    { headers: { Accept: 'application/vnd.github+json' } }
   );
 
   if (!res.ok) return [];
@@ -184,16 +205,35 @@ async function fetchNotionChunks(): Promise<DocumentChunk[]> {
   });
 }
 
-// Simple keyword-based embedding for demo (swap for text-embedding-3-small in production)
-function simpleEmbedding(text: string): number[] {
+// Fallback keyword-frequency embedding (used only if the local model fails to load)
+function keywordEmbedding(text: string): number[] {
   const words = text.toLowerCase().split(/\W+/).filter((w) => w.length > 3);
   const freq: Record<string, number> = {};
   for (const w of words) freq[w] = (freq[w] || 0) + 1;
-  return Object.values(freq).slice(0, 128).map((v) => v / words.length);
+  // Pad/truncate to 384 dims to match all-MiniLM-L6-v2 dimension
+  const vals = Object.values(freq).map((v) => v / (words.length || 1));
+  return vals.length >= 384 ? vals.slice(0, 384) : [...vals, ...new Array(384 - vals.length).fill(0)];
 }
 
-function embedChunks(chunks: DocumentChunk[]): DocumentChunk[] {
-  return chunks.map((c) => ({ ...c, embedding: simpleEmbedding(c.content) }));
+/**
+ * Get a semantic embedding using sentence-transformers/all-MiniLM-L6-v2.
+ * Runs entirely locally via @xenova/transformers — no API key required.
+ * Falls back to keyword frequency if the model fails to load.
+ */
+async function getEmbedding(text: string): Promise<number[]> {
+  try {
+    const embedder = await getEmbedder();
+    // all-MiniLM-L6-v2 has a 256-token limit; slice conservatively
+    const output = await embedder(text.slice(0, 512), { pooling: 'mean', normalize: true });
+    return Array.from(output.data as Float32Array);
+  } catch (err) {
+    console.warn('Local embedding model failed, using keyword fallback:', (err as Error).message);
+    return keywordEmbedding(text);
+  }
+}
+
+async function embedChunks(chunks: DocumentChunk[]): Promise<DocumentChunk[]> {
+  return Promise.all(chunks.map(async (c) => ({ ...c, embedding: await getEmbedding(c.content) })));
 }
 
 function cosineSimilarity(a: number[], b: number[]): number {
@@ -211,11 +251,11 @@ function cosineSimilarity(a: number[], b: number[]): number {
  * Retrieve the most relevant chunks for a query from the user's private store.
  * No other user's data is ever accessed — each store is keyed by userId.
  */
-export function retrieveChunks(userId: string, query: string, topK = 5): DocumentChunk[] {
+export async function retrieveChunks(userId: string, query: string, topK = 5): Promise<DocumentChunk[]> {
   const chunks = userStores.get(userId) || [];
   if (!chunks.length) return [];
 
-  const queryEmbedding = simpleEmbedding(query);
+  const queryEmbedding = await getEmbedding(query);
 
   return chunks
     .map((chunk) => ({
@@ -252,7 +292,7 @@ const pendingActions = new Map<string, PendingAction>();
 /**
  * Main reasoning loop:
  * 1. Retrieve relevant context from user's Token Vault-authenticated sources
- * 2. Reason with Claude
+ * 2. Reason with Gemini
  * 3. If user wants a write action — stage it and require step-up auth
  */
 export async function chat(
@@ -260,7 +300,7 @@ export async function chat(
   userMessage: string,
   history: ChatMessage[]
 ): Promise<AgentResponse> {
-  const relevantChunks = retrieveChunks(userId, userMessage, 5);
+  const relevantChunks = await retrieveChunks(userId, userMessage, 5);
   const hasData = relevantChunks.length > 0;
 
   const context = hasData
@@ -287,19 +327,20 @@ If the user asks you to WRITE, SEND, or MODIFY anything, respond normally then a
 }
 </action>`;
 
-  const messages = [
-    ...history.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
-    { role: 'user' as const, content: userMessage },
-  ];
+  // Gemini uses 'model' for assistant turns (not 'assistant')
+  const geminiHistory = history.map((m) => ({
+    role: m.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: m.content }],
+  }));
 
-  const response = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 1024,
-    system: systemPrompt,
-    messages,
+  const model = genai.getGenerativeModel({
+    model: 'gemini-2.0-flash',
+    systemInstruction: systemPrompt,
   });
 
-  const rawAnswer = response.content[0].type === 'text' ? response.content[0].text : '';
+  const chatSession = model.startChat({ history: geminiHistory });
+  const response = await chatSession.sendMessage(userMessage);
+  const rawAnswer = response.response.text();
   const actionMatch = rawAnswer.match(/<action>([\s\S]*?)<\/action>/);
   const answer = rawAnswer.replace(/<action>[\s\S]*?<\/action>/, '').trim();
 
@@ -317,6 +358,11 @@ If the user asks you to WRITE, SEND, or MODIFY anything, respond normally then a
         requiresStepUp: true,
       };
       pendingActions.set(actionId, pendingAction);
+      logAudit(userId, {
+        action: `Agent proposed: ${pendingAction.description}`,
+        type: 'action_staged',
+        details: `Type: ${pendingAction.type} | Requires step-up auth before execution`,
+      });
     } catch {
       // Malformed action block — skip silently
     }
@@ -346,7 +392,11 @@ export async function executeApprovedAction(
       case 'post_github_comment':
         return await postGithubComment(action.details);
       case 'update_notion':
-        return { success: true, message: 'Notion page queued for update. (Notion write API requires additional scope configuration.)' };
+        return {
+          success: false,
+          message:
+            'Notion write is not configured. To enable: go to Dashboard → Revoke Notion → reconnect with write scopes enabled in Auth0.',
+        };
       default:
         return { success: false, message: 'Unknown action type.' };
     }
