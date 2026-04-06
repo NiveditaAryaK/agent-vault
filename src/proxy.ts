@@ -3,7 +3,9 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  if (pathname.startsWith('/api/auth/')) {
+  // Let the Auth0 SDK handle its own auth routes directly,
+  // EXCEPT /api/auth/connect which needs middleware context to read the session.
+  if (pathname.startsWith('/api/auth/') && !pathname.startsWith('/api/auth/connect')) {
     return NextResponse.next();
   }
 
