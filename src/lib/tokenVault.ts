@@ -90,6 +90,8 @@ export async function getTokenForConnection(
  * Uses the Management API to inspect the user's linked identities.
  */
 export async function getUserConnections(userId: string): Promise<ConnectionStatus[]> {
+  const baseStatuses = buildDisconnectedStatuses();
+
   try {
     const mgmtToken = await getMgmtToken();
 
@@ -100,13 +102,13 @@ export async function getUserConnections(userId: string): Promise<ConnectionStat
 
     if (!res.ok) {
       console.error('[tokenVault] Management API fetch failed:', res.status, await res.text());
-      return buildDisconnectedStatuses();
+      return await hydrateStatusesFromVault(baseStatuses);
     }
 
     const user = (await res.json()) as Auth0UserProfile;
     const identities = user.identities || [];
 
-    return (Object.keys(SERVICE_CONFIGS) as ServiceConnection[]).map((conn) => {
+    const statuses = (Object.keys(SERVICE_CONFIGS) as ServiceConnection[]).map((conn) => {
       const identity = identities.find((id) => id.connection === conn);
       return {
         ...SERVICE_CONFIGS[conn],
@@ -115,8 +117,9 @@ export async function getUserConnections(userId: string): Promise<ConnectionStat
         scopes: identity?.access_token_scope?.split(' ') || [],
       };
     });
+    return await hydrateStatusesFromVault(statuses);
   } catch {
-    return buildDisconnectedStatuses();
+    return await hydrateStatusesFromVault(baseStatuses);
   }
 }
 
@@ -125,6 +128,23 @@ function buildDisconnectedStatuses(): ConnectionStatus[] {
     ...SERVICE_CONFIGS[conn],
     connected: false,
   }));
+}
+
+async function hydrateStatusesFromVault(statuses: ConnectionStatus[]): Promise<ConnectionStatus[]> {
+  const availability = await Promise.all(
+    statuses.map(async (status) => {
+      const token = await getTokenForConnection(status.connection);
+      return { connection: status.connection, connected: Boolean(token) };
+    })
+  );
+
+  return statuses.map((status) => {
+    const vaultStatus = availability.find((item) => item.connection === status.connection);
+    return {
+      ...status,
+      connected: status.connected || Boolean(vaultStatus?.connected),
+    };
+  });
 }
 
 /**

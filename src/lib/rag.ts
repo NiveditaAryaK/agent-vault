@@ -332,8 +332,11 @@ If the user asks you to WRITE, SEND, or MODIFY anything, respond normally then a
 }
 </action>`;
 
+  // Gemini requires history to start with a user turn.
+  const normalizedHistory = history.filter((m, index) => !(index === 0 && m.role === 'assistant'));
+
   // Gemini uses 'model' for assistant turns (not 'assistant')
-  const geminiHistory = history.map((m) => ({
+  const geminiHistory = normalizedHistory.map((m) => ({
     role: m.role === 'assistant' ? 'model' : 'user',
     parts: [{ text: m.content }],
   }));
