@@ -128,6 +128,25 @@ export async function getUserConnections(userId: string): Promise<ConnectionStat
   }
 }
 
+/**
+ * Check current Token Vault availability for each configured service.
+ * This is the most user-relevant signal for the dashboard because it reflects
+ * whether the agent can actually retrieve a usable token right now.
+ */
+export async function getCurrentConnectionStatuses(): Promise<ConnectionStatus[]> {
+  const entries = await Promise.all(
+    (Object.keys(SERVICE_CONFIGS) as ServiceConnection[]).map(async (conn) => {
+      const token = await getTokenForConnection(conn);
+      return {
+        ...SERVICE_CONFIGS[conn],
+        connected: !!token,
+      };
+    })
+  );
+
+  return entries;
+}
+
 function buildDisconnectedStatuses(): ConnectionStatus[] {
   return (Object.keys(SERVICE_CONFIGS) as ServiceConnection[]).map((conn) => ({
     ...SERVICE_CONFIGS[conn],
