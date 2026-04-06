@@ -2,10 +2,14 @@ import { auth0 } from '@/lib/auth0';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function proxy(req: NextRequest) {
+  const { pathname } = req.nextUrl;
+  if (pathname.startsWith('/api/auth/')) {
+    return NextResponse.next();
+  }
+
   const res = await auth0.middleware(req);
   if (res) return res;
 
-  const { pathname } = req.nextUrl;
   if (pathname.startsWith('/dashboard') || pathname.startsWith('/chat')) {
     const session = await auth0.getSession();
     if (!session) {
