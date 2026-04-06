@@ -61,7 +61,8 @@ export default function ChatPage() {
       });
 
       if (!res.ok) {
-        throw new Error('Chat request failed');
+        const errorPayload = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(errorPayload?.error || 'Chat request failed');
       }
 
       const data = await res.json();
@@ -74,10 +75,11 @@ export default function ChatPage() {
           pendingAction: data.pendingAction,
         },
       ]);
-    } catch {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Something went wrong. Please try again.';
       setMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: 'Something went wrong. Please try again.' },
+        { role: 'assistant', content: message },
       ]);
     } finally {
       setLoading(false);

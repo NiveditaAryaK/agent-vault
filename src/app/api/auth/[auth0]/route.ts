@@ -7,16 +7,28 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ auth
 
   if (action === 'login') {
     const connection = url.searchParams.get('connection') || undefined;
-    const rawReturnTo = url.searchParams.get('returnTo') || '/dashboard';
-    // If connecting a social account, append ?connected=1 so the dashboard
-    // knows to retry the permissions fetch (Management API cache lag).
-    const returnTo = connection
-      ? `${rawReturnTo}${rawReturnTo.includes('?') ? '&' : '?'}connected=1`
-      : rawReturnTo;
+    const returnTo = url.searchParams.get('returnTo') || '/dashboard';
 
     return auth0.startInteractiveLogin({
       authorizationParameters: connection ? { connection } : undefined,
       returnTo,
+    });
+  }
+
+  if (action === 'connect') {
+    const connection = url.searchParams.get('connection') || undefined;
+    const rawReturnTo = url.searchParams.get('returnTo') || '/dashboard';
+    const returnTo = `${rawReturnTo}${rawReturnTo.includes('?') ? '&' : '?'}connected=1`;
+    const scopes = url.searchParams.getAll('scopes');
+
+    if (!connection) {
+      return new Response('A connection is required.', { status: 400 });
+    }
+
+    return auth0.connectAccount({
+      connection,
+      returnTo,
+      ...(scopes.length > 0 ? { scopes } : {}),
     });
   }
 
