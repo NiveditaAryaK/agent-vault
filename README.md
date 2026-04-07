@@ -41,7 +41,7 @@ User reviews and approves -> Token is retrieved again from Vault -> Action execu
 - Per-user isolated stores to avoid cross-user leakage
 - Staged write actions with explicit approval and step-up authentication
 - Permission dashboard with connect, revoke, and activity log views
-- Gemini-based reasoning over Gmail, GitHub, and Notion context
+- Claude-based reasoning over Gmail, GitHub, and Notion context
 
 ## Tech stack
 
@@ -49,7 +49,7 @@ User reviews and approves -> Token is retrieved again from Vault -> Action execu
 |---|---|
 | Framework | Next.js 16 (App Router) |
 | Auth and Token Vault | Auth0 `@auth0/nextjs-auth0` v4 |
-| AI reasoning | Google Gemini `gemini-2.0-flash` |
+| AI reasoning | Anthropic Claude via `@anthropic-ai/sdk` |
 | Embeddings | `@xenova/transformers` with `all-MiniLM-L6-v2` |
 | Styling | Tailwind CSS v4 + Lucide icons |
 | Retrieval store | In-memory per-user store |
@@ -78,7 +78,8 @@ AUTH0_CLIENT_SECRET='your-client-secret'
 AUTH0_MGMT_CLIENT_ID='your-mgmt-client-id'
 AUTH0_MGMT_CLIENT_SECRET='your-mgmt-client-secret'
 
-GEMINI_API_KEY='your-gemini-api-key'
+ANTHROPIC_API_KEY='your-anthropic-api-key'
+ANTHROPIC_MODEL='claude-sonnet-4-0' # optional
 ```
 
 ### 4. Run

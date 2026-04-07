@@ -9,7 +9,7 @@
  * Write actions are staged and require step-up auth before execution.
  */
 
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import Anthropic from '@anthropic-ai/sdk';
 import { callWithVaultToken, getUserConnections } from './tokenVault';
 import { logAudit } from './audit';
 
@@ -68,7 +68,19 @@ async function getEmbedder() {
   return _embedder;
 }
 
-const genai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+function getAnthropicClient() {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+
+  if (!apiKey) {
+    throw new Error('ANTHROPIC_API_KEY is not configured.');
+  }
+
+  return new Anthropic({ apiKey });
+}
+
+function getAnthropicModel() {
+  return process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-0';
+}
 
 export interface DocumentChunk {
   id: string;
@@ -107,7 +119,7 @@ export async function indexUserData(userId: string): Promise<{ indexed: number; 
         if (githubChunks.length > 0) sources.push('GitHub');
       }
 
-} catch (err) {
+    } catch (err) {
       console.error(`Failed to index ${conn.connection}:`, err);
     }
   }
@@ -297,7 +309,7 @@ const pendingActions = new Map<string, PendingAction>();
 /**
  * Main reasoning loop:
  * 1. Retrieve relevant context from user's Token Vault-authenticated sources
- * 2. Reason with Gemini
+ * 2. Reason with Claude
  * 3. If user wants a write action — stage it and require step-up auth
  */
 export async function chat(
@@ -332,23 +344,29 @@ If the user asks you to WRITE, SEND, or MODIFY anything, respond normally then a
 }
 </action>`;
 
-  // Gemini requires history to start with a user turn.
   const normalizedHistory = history.filter((m, index) => !(index === 0 && m.role === 'assistant'));
-
-  // Gemini uses 'model' for assistant turns (not 'assistant')
-  const geminiHistory = normalizedHistory.map((m) => ({
-    role: m.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: m.content }],
-  }));
-
-  const model = genai.getGenerativeModel({
-    model: 'gemini-2.0-flash',
-    systemInstruction: systemPrompt,
+  const anthropic = getAnthropicClient();
+  const response = await anthropic.messages.create({
+    model: getAnthropicModel(),
+    max_tokens: 1200,
+    system: systemPrompt,
+    messages: [
+      ...normalizedHistory.map((message) => ({
+        role: message.role,
+        content: message.content,
+      })),
+      {
+        role: 'user',
+        content: userMessage,
+      },
+    ],
   });
 
-  const chatSession = model.startChat({ history: geminiHistory });
-  const response = await chatSession.sendMessage(userMessage);
-  const rawAnswer = response.response.text();
+  const rawAnswer = response.content
+    .filter((block) => block.type === 'text')
+    .map((block) => block.text)
+    .join('\n')
+    .trim();
   const actionMatch = rawAnswer.match(/<action>([\s\S]*?)<\/action>/);
   const answer = rawAnswer.replace(/<action>[\s\S]*?<\/action>/, '').trim();
 
