@@ -25,6 +25,52 @@ const ACTION_ICONS: Record<string, string> = {
   post_github_comment: '💬',
 };
 
+function renderInlineFormatting(text: string) {
+  return text.split(/(\*\*[^*]+\*\*)/g).map((part, index) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return <strong key={index} className="font-semibold text-white">{part.slice(2, -2)}</strong>;
+    }
+
+    return <span key={index}>{part}</span>;
+  });
+}
+
+function renderMessageContent(content: string) {
+  const cleaned = content
+    .replace(/^\*\[(.+?)\]\*$/gm, '$1')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  const blocks = cleaned.split(/\n\s*\n/);
+
+  return (
+    <div className="space-y-3">
+      {blocks.map((block, blockIndex) => {
+        const lines = block.split('\n').map((line) => line.trim()).filter(Boolean);
+        const isBulletList = lines.every((line) => /^(-|\*|\d+\.)\s+/.test(line));
+
+        if (isBulletList) {
+          return (
+            <ul key={blockIndex} className="space-y-1.5 pl-4 list-disc marker:text-white/30">
+              {lines.map((line, lineIndex) => (
+                <li key={lineIndex}>
+                  {renderInlineFormatting(line.replace(/^(-|\*|\d+\.)\s+/, ''))}
+                </li>
+              ))}
+            </ul>
+          );
+        }
+
+        return (
+          <p key={blockIndex} className="whitespace-pre-wrap">
+            {renderInlineFormatting(block)}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -184,7 +230,9 @@ export default function ChatPage() {
                       : 'bg-white/[0.04] border border-white/8 text-white/90 rounded-bl-sm'
                   }`}
                 >
-                  {msg.content}
+                  {msg.role === 'assistant' ? renderMessageContent(msg.content) : (
+                    <p className="whitespace-pre-wrap">{msg.content}</p>
+                  )}
                 </div>
 
                 {/* Sources */}
