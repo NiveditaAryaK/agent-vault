@@ -57,6 +57,7 @@ export default function DashboardPage() {
   const [revoking, setRevoking] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
+  const [connectError, setConnectError] = useState<string | null>(null);
 
   async function fetchPermissions(retries = 2) {
     const res = await fetch('/api/permissions');
@@ -86,6 +87,9 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setConnectError(params.get('connect_error'));
+
     void (async () => {
       await Promise.all([fetchPermissions(), fetchAuditLog()]);
     })();
@@ -151,6 +155,12 @@ export default function DashboardPage() {
 
         <main className="flex-1 overflow-y-auto px-8 py-10">
           <div className="max-w-3xl">
+            {connectError && (
+              <div className="mb-6 rounded-2xl border border-red-500/20 bg-red-500/8 px-4 py-3 text-sm text-red-200">
+                {connectError}
+              </div>
+            )}
+
             {/* Stats */}
             <div className="grid grid-cols-3 gap-4 mb-10">
               {[

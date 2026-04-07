@@ -18,6 +18,19 @@ export const auth0 = new Auth0Client({
   },
 });
 
+function getMyAccountAudience(): string {
+  return `https://${process.env.AUTH0_DOMAIN}/me/`;
+}
+
+export async function getMyAccountAccessToken(scopes: string[]): Promise<string> {
+  const { token } = await auth0.getAccessToken({
+    audience: getMyAccountAudience(),
+    scope: scopes.join(' '),
+  });
+
+  return token;
+}
+
 // Get Auth0 Management API token (for user identity lookups)
 let mgmtToken: string | null = null;
 let mgmtTokenExpiry = 0;

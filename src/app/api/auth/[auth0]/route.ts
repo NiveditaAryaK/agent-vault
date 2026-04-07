@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { auth0 } from '@/lib/auth0';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ auth0: string }> }) {
@@ -25,11 +25,26 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ auth
       return new Response('A connection is required.', { status: 400 });
     }
 
-    return auth0.connectAccount({
-      connection,
-      returnTo,
-      ...(scopes.length > 0 ? { scopes } : {}),
-    });
+    try {
+      return await auth0.connectAccount({
+        connection,
+        returnTo,
+        ...(scopes.length > 0 ? { scopes } : {}),
+      });
+    } catch (error) {
+      const rawMessage = error instanceof Error ? error.message : 'Unknown connect account error.';
+      const message = rawMessage.includes('connected account access token')
+        ? 'Auth0 Connected Accounts is not fully configured for this app. Enable My Account API access, grant create:me:connected_accounts, and enable Connected Accounts for Token Vault with Offline Access on the provider connection.'
+        : rawMessage;
+
+      console.error('[auth connect] failed:', rawMessage);
+
+      const redirectUrl = new URL(rawReturnTo, req.url);
+      redirectUrl.searchParams.set('connect_error', message);
+      redirectUrl.searchParams.set('connection', connection);
+
+      return NextResponse.redirect(redirectUrl);
+    }
   }
 
   if (action === 'logout') {
