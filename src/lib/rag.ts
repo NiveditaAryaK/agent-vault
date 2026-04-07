@@ -58,6 +58,34 @@ interface GitHubIssue {
   html_url: string;
 }
 
+interface GitHubRepo {
+  id: number;
+  name: string;
+  full_name: string;
+  description?: string;
+  private: boolean;
+  html_url: string;
+  updated_at?: string;
+  language?: string;
+}
+
+interface IndexFetchResult {
+  chunks: DocumentChunk[];
+  details: string;
+}
+
+export interface IndexServiceResult {
+  service: string;
+  indexed: number;
+  status: 'indexed' | 'empty' | 'error';
+  details: string;
+}
+
+export interface IndexUserDataResult {
+  indexed: number;
+  sources: string[];
+  results: IndexServiceResult[];
+}
 
 let _embedder: Embedder | null = null;
 async function getEmbedder() {
@@ -98,29 +126,48 @@ const userStores = new Map<string, DocumentChunk[]>();
  * Index a user's personal data from all connected services.
  * Uses Token Vault to fetch data — agent never touches raw credentials.
  */
-export async function indexUserData(userId: string): Promise<{ indexed: number; sources: string[] }> {
+export async function indexUserData(userId: string): Promise<IndexUserDataResult> {
   const connections = await getUserConnections(userId);
   const chunks: DocumentChunk[] = [];
   const sources: string[] = [];
+  const results: IndexServiceResult[] = [];
 
   for (const conn of connections) {
     if (!conn.connected) continue;
 
     try {
       if (conn.connection === 'google-oauth2') {
-        const emailChunks = await fetchGmailChunks();
-        chunks.push(...emailChunks);
-        if (emailChunks.length > 0) sources.push('Gmail');
+        const gmailResult = await fetchGmailChunks();
+        chunks.push(...gmailResult.chunks);
+        if (gmailResult.chunks.length > 0) sources.push('Gmail');
+        results.push({
+          service: 'Gmail',
+          indexed: gmailResult.chunks.length,
+          status: gmailResult.chunks.length > 0 ? 'indexed' : 'empty',
+          details: gmailResult.details,
+        });
       }
 
       if (conn.connection === 'github') {
-        const githubChunks = await fetchGithubChunks();
-        chunks.push(...githubChunks);
-        if (githubChunks.length > 0) sources.push('GitHub');
+        const githubResult = await fetchGithubChunks();
+        chunks.push(...githubResult.chunks);
+        if (githubResult.chunks.length > 0) sources.push('GitHub');
+        results.push({
+          service: 'GitHub',
+          indexed: githubResult.chunks.length,
+          status: githubResult.chunks.length > 0 ? 'indexed' : 'empty',
+          details: githubResult.details,
+        });
       }
-
     } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown indexing error';
       console.error(`Failed to index ${conn.connection}:`, err);
+      results.push({
+        service: conn.connection === 'google-oauth2' ? 'Gmail' : 'GitHub',
+        indexed: 0,
+        status: 'error',
+        details: message,
+      });
     }
   }
 
@@ -129,23 +176,44 @@ export async function indexUserData(userId: string): Promise<{ indexed: number; 
   logAudit(userId, {
     action: `Indexed ${chunks.length} document${chunks.length !== 1 ? 's' : ''}`,
     type: 'index',
-    details: sources.length ? `Sources: ${sources.join(', ')}` : 'No sources returned data',
+    details: results.length
+      ? results.map((result) => `${result.service}: ${result.details}`).join(' | ')
+      : 'No connected services available for indexing',
     success: true,
   });
 
-  return { indexed: chunks.length, sources };
+  return { indexed: chunks.length, sources, results };
 }
 
-async function fetchGmailChunks(): Promise<DocumentChunk[]> {
-  const res = await callWithVaultToken(
-    'google-oauth2',
-    'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=20&q=is:important'
-  );
+async function fetchGmailChunks(): Promise<IndexFetchResult> {
+  const queries = [
+    { label: 'important mail', value: 'is:important' },
+    { label: 'recent inbox mail', value: 'in:inbox newer_than:30d' },
+    { label: 'recent mail', value: 'newer_than:120d' },
+  ];
 
-  if (!res.ok) return [];
+  let messages: GmailMessageSummary[] = [];
+  let queryUsed = queries[0].label;
 
-  const data = (await res.json()) as GmailMessageListResponse;
-  const messages = data.messages || [];
+  for (const query of queries) {
+    const res = await callWithVaultToken(
+      'google-oauth2',
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=20&q=${encodeURIComponent(query.value)}`
+    );
+
+    if (!res.ok) {
+      throw new Error(`Gmail indexing failed with ${res.status} ${res.statusText}`);
+    }
+
+    const data = (await res.json()) as GmailMessageListResponse;
+    messages = data.messages || [];
+    queryUsed = query.label;
+
+    if (messages.length > 0) {
+      break;
+    }
+  }
+
   const chunks: DocumentChunk[] = [];
 
   for (const msg of messages.slice(0, 10)) {
@@ -173,7 +241,17 @@ async function fetchGmailChunks(): Promise<DocumentChunk[]> {
     }
   }
 
-  return chunks;
+  if (chunks.length === 0) {
+    return {
+      chunks,
+      details: `No Gmail messages matched the fallback queries (${queries.map((query) => query.label).join(', ')}).`,
+    };
+  }
+
+  return {
+    chunks,
+    details: `Indexed ${chunks.length} Gmail message${chunks.length !== 1 ? 's' : ''} from ${queryUsed}.`,
+  };
 }
 
 function extractEmailBody(payload?: GmailPayload): string {
@@ -195,30 +273,70 @@ function extractEmailBody(payload?: GmailPayload): string {
   return '';
 }
 
-async function fetchGithubChunks(): Promise<DocumentChunk[]> {
-  const res = await callWithVaultToken(
+async function fetchGithubChunks(): Promise<IndexFetchResult> {
+  const headers = { Accept: 'application/vnd.github+json' };
+  const issueRes = await callWithVaultToken(
     'github',
     'https://api.github.com/issues?filter=assigned&state=open&per_page=20',
-    { headers: { Accept: 'application/vnd.github+json' } }
+    { headers }
   );
 
-  if (!res.ok) return [];
+  if (!issueRes.ok) {
+    throw new Error(`GitHub indexing failed with ${issueRes.status} ${issueRes.statusText}`);
+  }
 
-  const issues = (await res.json()) as unknown;
-  if (!Array.isArray(issues)) return [];
+  const issues = (await issueRes.json()) as unknown;
+  if (Array.isArray(issues) && issues.length > 0) {
+    return {
+      chunks: (issues as GitHubIssue[]).slice(0, 10).map((issue) => ({
+        id: `github-issue-${issue.id}`,
+        content: `GitHub Issue #${issue.number}: ${issue.title}\nRepo: ${issue.repository_url?.split('/').slice(-2).join('/')}\nStatus: ${issue.state}\n\n${issue.body?.slice(0, 800) || '(no body)'}`,
+        source: 'GitHub',
+        sourceType: 'github' as const,
+        metadata: {
+          title: issue.title,
+          url: issue.html_url,
+          state: issue.state,
+          number: String(issue.number),
+        },
+      })),
+      details: `Indexed ${Math.min(issues.length, 10)} assigned GitHub issue${issues.length === 1 ? '' : 's'}.`,
+    };
+  }
 
-  return (issues as GitHubIssue[]).slice(0, 10).map((issue) => ({
-    id: `github-issue-${issue.id}`,
-    content: `GitHub Issue #${issue.number}: ${issue.title}\nRepo: ${issue.repository_url?.split('/').slice(-2).join('/')}\nStatus: ${issue.state}\n\n${issue.body?.slice(0, 800) || '(no body)'}`,
-    source: 'GitHub',
-    sourceType: 'github' as const,
-    metadata: {
-      title: issue.title,
-      url: issue.html_url,
-      state: issue.state,
-      number: String(issue.number),
-    },
-  }));
+  const repoRes = await callWithVaultToken(
+    'github',
+    'https://api.github.com/user/repos?sort=updated&per_page=10',
+    { headers }
+  );
+
+  if (!repoRes.ok) {
+    throw new Error(`GitHub repo fallback failed with ${repoRes.status} ${repoRes.statusText}`);
+  }
+
+  const repos = (await repoRes.json()) as unknown;
+  if (!Array.isArray(repos) || repos.length === 0) {
+    return {
+      chunks: [],
+      details: 'No assigned issues or accessible repositories were returned by GitHub.',
+    };
+  }
+
+  return {
+    chunks: (repos as GitHubRepo[]).slice(0, 10).map((repo) => ({
+      id: `github-repo-${repo.id}`,
+      content: `GitHub Repository: ${repo.full_name}\nVisibility: ${repo.private ? 'private' : 'public'}\nPrimary language: ${repo.language || 'unknown'}\nLast updated: ${repo.updated_at || 'unknown'}\n\n${repo.description || '(no description)'}`,
+      source: 'GitHub',
+      sourceType: 'github' as const,
+      metadata: {
+        title: repo.full_name,
+        url: repo.html_url,
+        visibility: repo.private ? 'private' : 'public',
+        language: repo.language || 'unknown',
+      },
+    })),
+    details: `No assigned issues found, so Sanctum indexed ${Math.min(repos.length, 10)} recently updated GitHub repos instead.`,
+  };
 }
 
 // Fallback keyword-frequency embedding (used only if the local model fails to load)
