@@ -8,9 +8,20 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ auth
   if (action === 'login') {
     const connection = url.searchParams.get('connection') || undefined;
     const returnTo = url.searchParams.get('returnTo') || '/dashboard';
+    const authorizationParameters = Object.fromEntries(
+      [...url.searchParams.entries()].filter(([key]) => key !== 'returnTo')
+    );
+
+    if (authorizationParameters.max_age) {
+      authorizationParameters.max_age = String(Number(authorizationParameters.max_age));
+    }
 
     return auth0.startInteractiveLogin({
-      authorizationParameters: connection ? { connection } : undefined,
+      authorizationParameters: Object.keys(authorizationParameters).length > 0
+        ? authorizationParameters
+        : connection
+          ? { connection }
+          : undefined,
       returnTo,
     });
   }
