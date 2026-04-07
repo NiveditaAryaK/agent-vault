@@ -382,6 +382,19 @@ function cosineSimilarity(a: number[], b: number[]): number {
   return dot / (Math.sqrt(normA) * Math.sqrt(normB) + 1e-8);
 }
 
+function inferPreferredSourceTypes(query: string): DocumentChunk['sourceType'][] {
+  const normalized = query.toLowerCase();
+  const emailKeywords = ['mail', 'email', 'gmail', 'inbox', 'message', 'messages'];
+  const githubKeywords = ['github', 'repo', 'repository', 'issue', 'issues', 'pull request', 'pr', 'code'];
+
+  const wantsEmail = emailKeywords.some((keyword) => normalized.includes(keyword));
+  const wantsGitHub = githubKeywords.some((keyword) => normalized.includes(keyword));
+
+  if (wantsEmail && !wantsGitHub) return ['email'];
+  if (wantsGitHub && !wantsEmail) return ['github'];
+  return [];
+}
+
 /**
  * Retrieve the most relevant chunks for a query from the user's private store.
  * No other user's data is ever accessed — each store is keyed by userId.
@@ -391,8 +404,14 @@ export async function retrieveChunks(userId: string, query: string, topK = 5): P
   if (!chunks.length) return [];
 
   const queryEmbedding = await getEmbedding(query);
+  const preferredSourceTypes = inferPreferredSourceTypes(query);
+  const candidateChunks =
+    preferredSourceTypes.length > 0
+      ? chunks.filter((chunk) => preferredSourceTypes.includes(chunk.sourceType))
+      : chunks;
+  const searchableChunks = candidateChunks.length > 0 ? candidateChunks : chunks;
 
-  return chunks
+  return searchableChunks
     .map((chunk) => ({
       chunk,
       score: chunk.embedding ? cosineSimilarity(queryEmbedding, chunk.embedding) : 0,
