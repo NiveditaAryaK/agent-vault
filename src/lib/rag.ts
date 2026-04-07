@@ -435,7 +435,15 @@ export async function chat(
   userMessage: string,
   history: ChatMessage[]
 ): Promise<AgentResponse> {
-  const relevantChunks = await retrieveChunks(userId, userMessage, 5);
+  let relevantChunks = await retrieveChunks(userId, userMessage, 5);
+
+  if (relevantChunks.length === 0) {
+    const indexResult = await indexUserData(userId);
+    if (indexResult.indexed > 0) {
+      relevantChunks = await retrieveChunks(userId, userMessage, 5);
+    }
+  }
+
   const hasData = relevantChunks.length > 0;
 
   const context = hasData

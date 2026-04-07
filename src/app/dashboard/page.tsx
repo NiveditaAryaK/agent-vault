@@ -118,6 +118,7 @@ export default function DashboardPage() {
     if (res.ok) {
       const data = await res.json();
       setIndexResult(data);
+      setIndexedCount(data.indexed);
       await fetchPermissions();
     }
     setIndexing(false);
