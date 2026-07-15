@@ -18,7 +18,7 @@ flowchart TD
     B --> C[Auth0 Token Vault stores the OAuth tokens]
     C --> D["Agent requests a token per operation:<br/>auth0.getAccessTokenForConnection({ connection })"]
     D --> E[Fetches user data with that scoped token<br/>and indexes it into a private per-user store]
-    E --> F[User chats with Gemini over their own data]
+    E --> F[User chats with Claude over their own data]
     F --> G{Agent wants to write?<br/>send email / post comment}
     G -->|Yes| H[Action is STAGED, never auto-executed]
     H --> I[User reviews and approves]
@@ -40,7 +40,7 @@ flowchart TD
 |---|---|
 | Framework | Next.js 16 (App Router) |
 | Auth + Token Vault | Auth0 `@auth0/nextjs-auth0` v4 |
-| AI reasoning | Google Gemini `gemini-2.0-flash` |
+| AI reasoning | Anthropic Claude via `@anthropic-ai/sdk` |
 | Embeddings | `@xenova/transformers` with `all-MiniLM-L6-v2` (runs locally, no API key) |
 | Styling | Tailwind CSS v4 + Lucide icons |
 | Retrieval store | In-memory per-user store |
@@ -131,7 +131,7 @@ src/
 │   │   ├── approve/      # Execute or deny staged write actions (step-up gated)
 │   │   ├── audit/        # Fetch per-user activity log
 │   │   ├── auth/[auth0]/ # Auth0 route handler (login, callback, connect)
-│   │   ├── chat/         # Chat endpoint (RAG + Gemini)
+│   │   ├── chat/         # Chat endpoint (RAG + Claude)
 │   │   ├── index-data/   # Trigger indexing via Token Vault
 │   │   ├── permissions/  # List connected services and scopes
 │   │   └── revoke/       # Unlink a connected service

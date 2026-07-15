@@ -40,7 +40,7 @@ const steps = [
   {
     step: '03',
     title: 'Chat with grounded answers',
-    desc: 'Ask questions about your own data. The agent retrieves relevant context and answers with source-aware responses powered by Gemini.',
+    desc: 'Ask questions about your own data. The agent retrieves relevant context and answers with source-aware responses powered by Claude.',
   },
   {
     step: '04',
@@ -240,7 +240,7 @@ export default function Home() {
           <GitBranch className="w-4 h-4" />
           Built for Auth0 Authorized to Act Hackathon
         </div>
-        <div>Auth0 Token Vault + Gemini + Next.js</div>
+        <div>Auth0 Token Vault + Claude + Next.js</div>
       </footer>
     </div>
   );
