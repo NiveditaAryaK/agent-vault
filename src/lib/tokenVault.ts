@@ -12,7 +12,7 @@
  */
 
 import { auth0 } from './auth0';
-import { getMgmtToken } from './auth0';
+import { getMgmtToken, getMyAccountAccessToken } from './auth0';
 
 export type ServiceConnection = 'google-oauth2' | 'github';
 
@@ -27,17 +27,16 @@ export interface ConnectionStatus {
   connectedAt?: string;
 }
 
-interface Auth0Identity {
+interface ConnectedAccount {
+  id: string;
   connection?: string;
-  user_id?: string;
-  profileData?: {
-    created_at?: string;
-  };
-  access_token_scope?: string;
+  created_at?: string;
+  scopes?: string[];
 }
 
-interface Auth0UserProfile {
-  identities?: Auth0Identity[];
+interface ConnectedAccountsResponse {
+  connected_accounts?: ConnectedAccount[];
+  accounts?: ConnectedAccount[];
 }
 
 export const SERVICE_CONFIGS: Record<ServiceConnection, Omit<ConnectionStatus, 'connected' | 'connectedAt'>> = {
@@ -87,36 +86,45 @@ export async function getTokenForConnection(
 
 /**
  * Check which services a user has connected via Auth0 Token Vault.
- * Uses the Management API to inspect the user's linked identities.
+ * Uses the Management API connected_accounts endpoint and falls back to
+ * checking Token Vault directly if the connected account list is unavailable.
  */
 export async function getUserConnections(userId: string): Promise<ConnectionStatus[]> {
+  const baseStatuses = buildDisconnectedStatuses();
+
   try {
-    const mgmtToken = await getMgmtToken();
-
-    const res = await fetch(
-      `https://${process.env.AUTH0_DOMAIN}/api/v2/users/${encodeURIComponent(userId)}`,
-      { headers: { Authorization: `Bearer ${mgmtToken}` } }
-    );
-
-    if (!res.ok) {
-      console.error('[tokenVault] Management API fetch failed:', res.status, await res.text());
-      return buildDisconnectedStatuses();
-    }
-
-    const user = (await res.json()) as Auth0UserProfile;
-    const identities = user.identities || [];
-
-    return (Object.keys(SERVICE_CONFIGS) as ServiceConnection[]).map((conn) => {
-      const identity = identities.find((id) => id.connection === conn);
-      return {
-        ...SERVICE_CONFIGS[conn],
-        connected: !!identity,
-        connectedAt: identity?.profileData?.created_at,
-        scopes: identity?.access_token_scope?.split(' ') || [],
-      };
-    });
+    const statusesFromMyAccount = await getUserConnectionsFromMyAccount();
+    return await hydrateStatusesFromVault(statusesFromMyAccount);
   } catch {
-    return buildDisconnectedStatuses();
+    try {
+      const mgmtToken = await getMgmtToken();
+
+      const res = await fetch(
+        `https://${process.env.AUTH0_DOMAIN}/api/v2/users/${encodeURIComponent(userId)}/connected-accounts`,
+        { headers: { Authorization: `Bearer ${mgmtToken}` } }
+      );
+
+      if (!res.ok) {
+        console.error('[tokenVault] Management API fetch failed:', res.status, await res.text());
+        return await hydrateStatusesFromVault(baseStatuses);
+      }
+
+      const data = (await res.json()) as ConnectedAccountsResponse;
+      const connectedAccounts = data.connected_accounts || [];
+
+      const statuses = (Object.keys(SERVICE_CONFIGS) as ServiceConnection[]).map((conn) => {
+        const connectedAccount = connectedAccounts.find((account) => account.connection === conn);
+        return {
+          ...SERVICE_CONFIGS[conn],
+          connected: !!connectedAccount,
+          connectedAt: connectedAccount?.created_at,
+          scopes: connectedAccount?.scopes || [],
+        };
+      });
+      return await hydrateStatusesFromVault(statuses);
+    } catch {
+      return await hydrateStatusesFromVault(baseStatuses);
+    }
   }
 }
 
@@ -127,35 +135,70 @@ function buildDisconnectedStatuses(): ConnectionStatus[] {
   }));
 }
 
+async function hydrateStatusesFromVault(statuses: ConnectionStatus[]): Promise<ConnectionStatus[]> {
+  const availability = await Promise.all(
+    statuses.map(async (status) => {
+      const token = await getTokenForConnection(status.connection);
+      return { connection: status.connection, connected: Boolean(token) };
+    })
+  );
+
+  return statuses.map((status) => {
+    const vaultStatus = availability.find((item) => item.connection === status.connection);
+    return {
+      ...status,
+      connected: status.connected || Boolean(vaultStatus?.connected),
+    };
+  });
+}
+
+async function getUserConnectionsFromMyAccount(): Promise<ConnectionStatus[]> {
+  const token = await getMyAccountAccessToken(['read:me:connected_accounts']);
+  const res = await fetch(`https://${process.env.AUTH0_DOMAIN}/me/v1/connected-accounts/accounts`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    throw new Error(`[tokenVault] My Account API fetch failed: ${res.status} ${await res.text()}`);
+  }
+
+  const data = (await res.json()) as ConnectedAccountsResponse;
+  const accounts = data.accounts || [];
+
+  return (Object.keys(SERVICE_CONFIGS) as ServiceConnection[]).map((conn) => {
+    const connectedAccount = accounts.find((account) => account.connection === conn);
+    return {
+      ...SERVICE_CONFIGS[conn],
+      connected: !!connectedAccount,
+      connectedAt: connectedAccount?.created_at,
+      scopes: connectedAccount?.scopes || [],
+    };
+  });
+}
+
 /**
  * Revoke a connection — user removes the agent's access to a service.
- * Deletes the linked identity from the user's Auth0 profile, which also
+ * Deletes the connected account from the user's Auth0 profile, which also
  * removes the token from Token Vault.
  */
 export async function revokeConnection(userId: string, connection: ServiceConnection): Promise<boolean> {
   try {
-    const mgmtToken = await getMgmtToken();
-
-    // First, look up the identity to get the provider-specific user ID
-    const profileRes = await fetch(
-      `https://${process.env.AUTH0_DOMAIN}/api/v2/users/${encodeURIComponent(userId)}`,
-      { headers: { Authorization: `Bearer ${mgmtToken}` } }
+    const token = await getMyAccountAccessToken(['read:me:connected_accounts', 'delete:me:connected_accounts']);
+    const connectedAccountsRes = await fetch(
+      `https://${process.env.AUTH0_DOMAIN}/me/v1/connected-accounts/accounts?connection=${encodeURIComponent(connection)}`,
+      { headers: { Authorization: `Bearer ${token}` } }
     );
-    if (!profileRes.ok) return false;
+    if (!connectedAccountsRes.ok) return false;
 
-    const profile = (await profileRes.json()) as Auth0UserProfile;
-    const identity = profile.identities?.find((id) => id.connection === connection);
-    if (!identity) return false; // not connected, nothing to revoke
-
-    // Auth0 unlink endpoint: DELETE /api/v2/users/{primary_id}/identities/{provider}/{provider_user_id}
-    const providerUserId = identity.user_id;
-    if (!providerUserId) return false;
+    const data = (await connectedAccountsRes.json()) as ConnectedAccountsResponse;
+    const connectedAccount = data.accounts?.find((account) => account.connection === connection);
+    if (!connectedAccount) return false;
 
     const res = await fetch(
-      `https://${process.env.AUTH0_DOMAIN}/api/v2/users/${encodeURIComponent(userId)}/identities/${connection}/${providerUserId}`,
+      `https://${process.env.AUTH0_DOMAIN}/me/v1/connected-accounts/accounts/${encodeURIComponent(connectedAccount.id)}`,
       {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${mgmtToken}` },
+        headers: { Authorization: `Bearer ${token}` },
       }
     );
 

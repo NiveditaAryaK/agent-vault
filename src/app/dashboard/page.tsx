@@ -26,6 +26,19 @@ interface AuditEntry {
   success?: boolean;
 }
 
+interface IndexServiceResult {
+  service: string;
+  indexed: number;
+  status: 'indexed' | 'empty' | 'error';
+  details: string;
+}
+
+interface IndexResult {
+  indexed: number;
+  sources: string[];
+  results: IndexServiceResult[];
+}
+
 const AUDIT_TYPE_STYLES: Record<string, string> = {
   index: 'text-blue-400 bg-blue-500/10',
   action_staged: 'text-orange-400 bg-orange-500/10',
@@ -53,10 +66,11 @@ export default function DashboardPage() {
   const [connections, setConnections] = useState<ConnectionStatus[]>([]);
   const [indexedCount, setIndexedCount] = useState(0);
   const [indexing, setIndexing] = useState(false);
-  const [indexResult, setIndexResult] = useState<{ indexed: number; sources: string[] } | null>(null);
+  const [indexResult, setIndexResult] = useState<IndexResult | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
+  const [connectError, setConnectError] = useState<string | null>(null);
 
   async function fetchPermissions(retries = 2) {
     const res = await fetch('/api/permissions');
@@ -86,9 +100,15 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setConnectError(params.get('connect_error'));
+
     void (async () => {
       await Promise.all([fetchPermissions(), fetchAuditLog()]);
     })();
+    // Initial dashboard bootstrap only.
+    // fetchPermissions intentionally reads the current URL to detect a fresh connection.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function handleIndex() {
@@ -98,6 +118,7 @@ export default function DashboardPage() {
     if (res.ok) {
       const data = await res.json();
       setIndexResult(data);
+      setIndexedCount(data.indexed);
       await fetchPermissions();
     }
     setIndexing(false);
@@ -148,6 +169,12 @@ export default function DashboardPage() {
 
         <main className="flex-1 overflow-y-auto px-8 py-10">
           <div className="max-w-3xl">
+            {connectError && (
+              <div className="mb-6 rounded-2xl border border-red-500/20 bg-red-500/8 px-4 py-3 text-sm text-red-200">
+                {connectError}
+              </div>
+            )}
+
             {/* Stats */}
             <div className="grid grid-cols-3 gap-4 mb-10">
               {[
@@ -274,6 +301,30 @@ export default function DashboardPage() {
                   </div>
                   <div className="text-white/40">
                     Sources: {indexResult.sources.join(', ') || 'None found'}
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {indexResult.results.map((result) => (
+                      <div
+                        key={result.service}
+                        className="flex items-start justify-between gap-3 rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2"
+                      >
+                        <div className="min-w-0">
+                          <div className="text-white/80 font-medium">{result.service}</div>
+                          <div className="text-white/35 text-xs">{result.details}</div>
+                        </div>
+                        <div
+                          className={`shrink-0 text-xs px-2 py-1 rounded-full ${
+                            result.status === 'indexed'
+                              ? 'text-green-300 bg-green-500/10'
+                              : result.status === 'error'
+                                ? 'text-red-300 bg-red-500/10'
+                                : 'text-yellow-200 bg-yellow-500/10'
+                          }`}
+                        >
+                          {result.status === 'indexed' ? `${result.indexed} indexed` : result.status}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}

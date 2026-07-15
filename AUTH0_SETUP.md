@@ -7,8 +7,8 @@ This guide walks you through configuring Auth0 for Sanctum — including Token V
 ## Step 1: Create an Auth0 tenant
 
 1. Go to [manage.auth0.com](https://manage.auth0.com) and sign up / log in
-2. Create a new tenant (e.g. `sanctum-dev`)
-3. Note your **Domain**: `sanctum-dev.us.auth0.com`
+2. Create a new tenant
+3. Note your **Domain**: `your-tenant.us.auth0.com`
 
 ---
 
@@ -34,14 +34,14 @@ Click **Save Changes**.
 ### Copy credentials to `.env.local`
 
 ```env
-AUTH0_DOMAIN='sanctum-dev.us.auth0.com'
+AUTH0_DOMAIN='your-tenant.us.auth0.com'
 AUTH0_CLIENT_ID='<Client ID from Settings tab>'
 AUTH0_CLIENT_SECRET='<Client Secret from Settings tab>'
 AUTH0_SECRET='<run: openssl rand -hex 32>'
 AUTH0_BASE_URL='http://localhost:3000'
 ```
 
-> `GEMINI_API_KEY` is covered in Step 8.
+> `ANTHROPIC_API_KEY` is covered in Step 8.
 
 ---
 
@@ -70,7 +70,7 @@ Token Vault is available in Auth0 for AI Agents.
 5. Application type: **Web application**
 6. Authorized redirect URIs:
    ```
-   https://sanctum-dev.us.auth0.com/login/callback
+   https://your-tenant.us.auth0.com/login/callback
    ```
 7. Save — copy the **Client ID** and **Client Secret**
 
@@ -95,17 +95,22 @@ Token Vault is available in Auth0 for AI Agents.
 
 ## Step 5: Set up GitHub social connection
 
-### Create a GitHub OAuth app
+### Create a GitHub app
 
-1. Go to [github.com/settings/developers](https://github.com/settings/developers)
-2. **OAuth Apps** → **New OAuth App**
+1. Go to [github.com/settings/apps](https://github.com/settings/apps)
+2. **New GitHub App**
 3. Fill in:
    - Application name: `Sanctum`
-   - Homepage URL: `http://localhost:3000`
-   - Authorization callback URL:
+   - Homepage URL:
      ```
-     https://sanctum-dev.us.auth0.com/login/callback
+     https://your-tenant.us.auth0.com
      ```
+   - Callback URL:
+     ```
+     https://your-tenant.us.auth0.com/login/callback
+     ```
+   - Webhooks: disabled
+   - Repository and account permissions: select what your app needs in GitHub
 4. Register — copy **Client ID** and generate a **Client Secret**
 
 ### Add to Auth0
@@ -113,10 +118,11 @@ Token Vault is available in Auth0 for AI Agents.
 1. Auth0 dashboard → **Authentication** → **Social** → **Create Connection**
 2. Select **GitHub**
 3. Fill in Client ID and Client Secret
-4. Permissions: `read:user`, `repo` (or `public_repo` for public only)
-5. Enable for **Sanctum** application
-6. **Enable Token Vault** on this connection
-7. Save
+4. Turn on **Connected Accounts for Token Vault**
+5. Enable the connection for your **Sanctum** application
+6. Save
+
+> GitHub Connected Accounts do not use free-form scopes in Auth0 yet. Configure the required repository/account permissions in the GitHub app itself. `offline_access` is not required for GitHub.
 
 ---
 
@@ -176,16 +182,17 @@ AUTH0_MGMT_CLIENT_SECRET='<Sanctum Management Client Secret>'
 
 ## Step 8: Add AI API keys
 
-Sanctum uses Gemini for reasoning and a local embedding model for RAG. Only one API key is needed:
+Sanctum uses Anthropic for reasoning and a local embedding model for RAG. Only one API key is needed:
 
 ```env
-# Required — used for chat reasoning (Gemini 2.0 Flash)
-GEMINI_API_KEY='AIza...'
+# Required — used for chat reasoning
+ANTHROPIC_API_KEY='sk-ant-...'
+
+# Optional — defaults to claude-sonnet-4-0
+ANTHROPIC_MODEL='claude-sonnet-4-0'
 ```
 
-Get your free Gemini API key at: [aistudio.google.com](https://aistudio.google.com) → **Get API key**
-
-> **Gemini 2.0 Flash is free** with generous rate limits (15 RPM, 1M TPM on the free tier) — more than enough for a demo.
+Get your API key at: [console.anthropic.com](https://console.anthropic.com)
 
 > **No OpenAI key needed.** Embeddings are generated locally using `sentence-transformers/all-MiniLM-L6-v2` via `@xenova/transformers`. The model (~90MB) is downloaded automatically on first run and cached. No API key, no cost, no rate limits.
 

@@ -5,7 +5,7 @@ export const auth0 = new Auth0Client({
   clientId: process.env.AUTH0_CLIENT_ID!,
   clientSecret: process.env.AUTH0_CLIENT_SECRET!,
   secret: process.env.AUTH0_SECRET!,
-  appBaseUrl: process.env.AUTH0_BASE_URL!,
+  appBaseUrl: process.env.APP_BASE_URL || process.env.AUTH0_BASE_URL,
   enableConnectAccountEndpoint: true,
   routes: {
     login: '/api/auth/login',
@@ -17,6 +17,19 @@ export const auth0 = new Auth0Client({
     scope: 'openid profile email offline_access',
   },
 });
+
+function getMyAccountAudience(): string {
+  return `https://${process.env.AUTH0_DOMAIN}/me/`;
+}
+
+export async function getMyAccountAccessToken(scopes: string[]): Promise<string> {
+  const { token } = await auth0.getAccessToken({
+    audience: getMyAccountAudience(),
+    scope: scopes.join(' '),
+  });
+
+  return token;
+}
 
 // Get Auth0 Management API token (for user identity lookups)
 let mgmtToken: string | null = null;

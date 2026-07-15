@@ -69,7 +69,8 @@ AUTH0_CLIENT_SECRET='your-client-secret'
 AUTH0_MGMT_CLIENT_ID='your-mgmt-client-id'
 AUTH0_MGMT_CLIENT_SECRET='your-mgmt-client-secret'
 
-GEMINI_API_KEY='your-gemini-api-key'
+ANTHROPIC_API_KEY='your-anthropic-api-key'
+ANTHROPIC_MODEL='claude-sonnet-4-0' # optional
 ```
 
 ### 4. Run

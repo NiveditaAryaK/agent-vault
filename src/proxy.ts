@@ -3,9 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  // Skip auth routes — EXCEPT /api/auth/connect which needs the middleware
-  // session context to properly link social accounts via Token Vault.
-  if (pathname.startsWith('/api/auth/') && pathname !== '/api/auth/connect') {
+  // Custom auth route handlers under /api/auth/[auth0] handle these requests.
+  if (pathname.startsWith('/api/auth/')) {
     return NextResponse.next();
   }
 
